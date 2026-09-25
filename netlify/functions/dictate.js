@@ -93,6 +93,36 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: "Bad request." }) };
   }
 
+  // Diagnostic-only path: POST {"test":"claude"} to check the Anthropic key
+  // directly, without needing real audio — bypasses Deepgram entirely and
+  // reports the raw Anthropic response so a bad key is easy to spot.
+  if (payload && payload.test === "claude") {
+    try {
+      const testRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 50,
+          system: "Reply with the single word OK.",
+          messages: [{ role: "user", content: "test" }]
+        })
+      });
+      const testText = await testRes.text();
+      return {
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ anthropicStatus: testRes.status, anthropicBody: testText.slice(0, 500) })
+      };
+    } catch (e) {
+      return { statusCode: 200, body: JSON.stringify({ testError: String(e && e.message) }) };
+    }
+  }
+
   const { audioBase64, mimeType, field } = payload || {};
   if (!audioBase64 || !mimeType) {
     return { statusCode: 400, body: JSON.stringify({ error: "No audio received." }) };
@@ -158,7 +188,11 @@ exports.handler = async (event) => {
         messages: [{ role: "user", content: transcript }]
       })
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.error("Anthropic API error " + res.status + ": " + errText.slice(0, 500));
+      return null;
+    }
     const json = await res.json();
     const textBlock = Array.isArray(json.content) && json.content.find((b) => b.type === "text");
     return (textBlock && textBlock.text && textBlock.text.trim()) || null;
@@ -187,6 +221,7 @@ exports.handler = async (event) => {
           : [];
       }
     } catch (e) {
+      console.error("Full-job JSON split failed: " + (e && e.message));
       // Splitting failed — fall through and hand back the raw transcript as
       // the notes field below, so nothing dictated gets lost.
     }
@@ -207,6 +242,7 @@ exports.handler = async (event) => {
     // If this call fails for any reason, the raw transcript still goes back
     // below rather than losing the dictation entirely.
   } catch (e) {
+    console.error("Single-field Claude cleanup failed: " + (e && e.message));
     // network hiccup — fall through with the raw transcript
   }
 
