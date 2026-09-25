@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Docket — Submissions</title>
+<meta name="robots" content="noindex">
+<style>
+:root {
+  --ink: #0b2436;
+  --ink-soft: #435a6b;
+  --paper: #eef2f1;
+  --paper-raised: #ffffff;
+  --line: rgba(11, 36, 54, 0.14);
+  --accent: #b5601c;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 20px;
+}
+h1 { font-size: 1.3rem; margin: 0 0 4px; }
+p.sub { color: var(--ink-soft); margin: 0 0 20px; font-size: 0.9rem; }
+.pin-row { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+input[type="text"], input[type="password"] {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 1rem;
+  flex: 1;
+  min-width: 160px;
+}
+button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.6; cursor: default; }
+.status { margin: 10px 0; font-size: 0.9rem; color: var(--ink-soft); }
+.status.error { color: #a3271e; }
+.entries { display: flex; flex-direction: column; gap: 12px; }
+.entry {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.entry-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+.entry-head strong { font-size: 1.05rem; }
+.entry-head time { color: var(--ink-soft); font-size: 0.85rem; }
+.entry dl { margin: 10px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 0.92rem; }
+.entry dt { color: var(--ink-soft); }
+.entry dd { margin: 0; white-space: pre-wrap; }
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(181, 96, 28, 0.15);
+  color: var(--accent);
+}
+.empty { color: var(--ink-soft); padding: 20px 0; }
+</style>
+</head>
+<body>
+
+<h1>Job Docket — Submissions</h1>
+<p class="sub">Jobs submitted by the field techs. Enter the app PIN below to view.</p>
+
+<div class="pin-row">
+<input type="password" id="pinInput" placeholder="App PIN" autocomplete="off" inputmode="numeric">
+<button id="loadBtn" type="button">Load submissions</button>
+</div>
+<div class="status" id="status" hidden></div>
+<div class="entries" id="entries"></div>
+
+<script>
+(function () {
+"use strict";
+
+var pinInput = document.getElementById("pinInput");
+var loadBtn = document.getElementById("loadBtn");
+var statusEl = document.getElementById("status");
+var entriesEl = document.getElementById("entries");
+
+var STORE_KEY = "jobDocket.reviewPin";
+try {
+  var savedPin = localStorage.getItem(STORE_KEY);
+  if (savedPin) pinInput.value = savedPin;
+} catch (e) { /* storage unavailable — start fresh, silently */ }
+
+function showStatus(msg, isError) {
+  statusEl.textContent = msg;
+  statusEl.hidden = !msg;
+  statusEl.className = "status" + (isError ? " error" : "");
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c];
+  });
+}
+
+function renderEntries(list) {
+  entriesEl.innerHTML = "";
+  if (!list.length) {
+    entriesEl.innerHTML = '<div class="empty">No submissions yet.</div>';
+    return;
+  }
+  list.forEach(function (e) {
+    var div = document.createElement("div");
+    div.className = "entry";
+    var when = "";
+    try { when = new Date(e.submittedAt).toLocaleString("en-AU"); } catch (err) { when = e.submittedAt || ""; }
+    var partsText = (e.parts || []).map(function (p) {
+      return (p && p.qty ? p.qty : "1") + " x " + escapeHtml(p && p.desc ? p.desc : "");
+    }).join("<br>");
+    var status = (e.tradify && e.tradify.status) || "pending";
+    div.innerHTML =
+      '<div class="entry-head"><strong>' + escapeHtml(e.job) + '</strong>' +
+      '<span class="badge">' + escapeHtml(status) + '</span>' +
+      '<time>' + escapeHtml(when) + '</time></div>' +
+      '<dl>' +
+      (e.tech ? '<dt>Tech</dt><dd>' + escapeHtml(e.tech) + '</dd>' : '') +
+      ((e.startTime || e.finishTime) ? '<dt>Time</dt><dd>' + escapeHtml(e.startTime || "?") + ' – ' + escapeHtml(e.finishTime || "?") + '</dd>' : '') +
+      '<dt>Notes</dt><dd>' + escapeHtml(e.notes) + '</dd>' +
+      (partsText ? '<dt>Parts</dt><dd>' + partsText + '</dd>' : '') +
+      (e.clientNote ? '<dt>Client note</dt><dd>' + escapeHtml(e.clientNote) + '</dd>' : '') +
+      (e.emailTo ? '<dt>Emailed to</dt><dd>' + escapeHtml(e.emailTo) + '</dd>' : '') +
+      '</dl>';
+    entriesEl.appendChild(div);
+  });
+}
+
+function load() {
+  var pin = pinInput.value.trim();
+  try { localStorage.setItem(STORE_KEY, pin); } catch (e) { /* ignore */ }
+  var headers = {};
+  if (pin) headers["x-app-secret"] = pin;
+  loadBtn.disabled = true;
+  showStatus("Loading…", false);
+  fetch("/api/submit-entry", { headers: headers })
+    .then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+    })
+    .then(function (result) {
+      loadBtn.disabled = false;
+      if (!result.ok) {
+        showStatus((result.data && result.data.error) || "Couldn't load submissions.", true);
+        entriesEl.innerHTML = "";
+        return;
+      }
+      showStatus("", false);
+      renderEntries((result.data && result.data.submissions) || []);
+    })
+    .catch(function () {
+      loadBtn.disabled = false;
+      showStatus("Couldn't reach the server.", true);
+    });
+}
+
+loadBtn.addEventListener("click", load);
+pinInput.addEventListener("keydown", function (e) { if (e.key === "Enter") load(); });
+
+if (pinInput.value) load();
+})();
+</script>
+</body>
+</html>
