@@ -1,0 +1,8 @@
+{
+  "name": "job-docket-functions",
+  "private": true,
+  "description": "Backend functions for the Job Docket app. No build step needed for the app itself (index.html is static) — this file only exists so Netlify installs the dependency the submit-entry function needs.",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.1"
+  }
+}
