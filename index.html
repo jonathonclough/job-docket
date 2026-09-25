@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Job Docket</title>
+<meta name="description" content="Dictate a job note in the field and get it ready to paste into Tradify.">
+<meta name="theme-color" content="#0b2436">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Job Docket">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Public+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap">
+<style>
+  :root {
+    --ink: #0b2436;
+    --ink-soft: #435a6b;
+    --paper: #eef2f1;
+    --paper-raised: #ffffff;
+    --line: rgba(11, 36, 54, 0.14);
+    --accent: #b5601c;
+    --accent-ink: #ffffff;
+    --ok: #1e6e5c;
+    --danger: #a8402a;
+    --focus: #1e6e5c;
+    color-scheme: light;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #eef2f1;
+      --ink-soft: #a9bcc4;
+      --paper: #0d2130;
+      --paper-raised: #152c3d;
+      --line: rgba(238, 242, 241, 0.14);
+      --accent: #e0863f;
+      --accent-ink: #16222a;
+      --ok: #4fb896;
+      --danger: #e17c62;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #eef2f1;
+    --ink-soft: #a9bcc4;
+    --paper: #0d2130;
+    --paper-raised: #152c3d;
+    --line: rgba(238, 242, 241, 0.14);
+    --accent: #e0863f;
+    --accent-ink: #16222a;
+    --ok: #4fb896;
+    --danger: #e17c62;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Public Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-inline: 16px;
+    padding-block: 18px 40px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  [hidden] { display: none !important; }
+
+  .wrap { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+  header.top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding-block: 4px 6px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .brand { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 1.05rem; letter-spacing: 0.01em; text-transform: uppercase; }
+  .brand span { color: var(--accent); }
+
+  .docket-no { font-family: "Space Mono", ui-monospace, Menlo, monospace; font-size: 0.78rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+  .offline-pill {
+    font-family: "Archivo", sans-serif;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: var(--ok);
+    color: var(--accent-ink);
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+
+  .card { background: var(--paper-raised); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-soft); }
+  .field .hint { font-size: 0.78rem; color: var(--ink-soft); }
+
+  input[type="text"], input[type="email"], input[type="time"], textarea {
+    font: inherit;
+    font-size: 1rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1.5px solid var(--line);
+    border-radius: 8px;
+    padding: 11px 12px;
+    width: 100%;
+    resize: vertical;
+  }
+  input[type="text"]:focus, input[type="email"]:focus, textarea:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+  .dictate-field { position: relative; }
+  .dictate-field.has-mic input,
+  .dictate-field.has-mic textarea { padding-right: 46px; }
+
+  textarea#notes { min-height: 128px; line-height: 1.45; }
+  textarea#preview { min-height: 150px; line-height: 1.5; font-family: "Space Mono", ui-monospace, Menlo, monospace; font-size: 0.86rem; }
+
+  .mic-btn {
+    position: absolute;
+    right: 7px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .dictate-field--input .mic-btn { top: 50%; transform: translateY(-50%); }
+  .dictate-field--textarea .mic-btn { top: 8px; }
+  .mic-btn svg { width: 15px; height: 15px; }
+  .mic-btn.mic-live { background: var(--danger); animation: micPulse 1.4s infinite; }
+  .mic-btn.mic-busy { opacity: 0.55; animation: none; }
+  .mic-btn:disabled { cursor: default; }
+  @keyframes micPulse {
+    0% { box-shadow: 0 0 0 0 rgba(168, 64, 42, 0.45); }
+    70% { box-shadow: 0 0 0 10px rgba(168, 64, 42, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(168, 64, 42, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) { .mic-btn.mic-live { animation: none; } }
+
+  .parts-rows { display: flex; flex-direction: column; gap: 8px; }
+  .parts-row { display: grid; grid-template-columns: 32px 1fr 54px 32px; gap: 6px; align-items: center; }
+  .parts-row input[type="number"] { padding: 11px 6px; text-align: center; }
+  .parts-remove { background: transparent; color: var(--danger); border: 1.5px solid var(--line); padding: 0; width: 32px; height: 40px; font-size: 1.1rem; line-height: 1; border-radius: 8px; cursor: pointer; }
+  .parts-row .mic-btn { position: static; width: 32px; height: 40px; border-radius: 8px; flex: none; }
+
+  .hero-card { align-items: center; text-align: center; gap: 8px; padding-block: 18px; }
+  .hero-title { font-family: "Archivo", sans-serif; font-weight: 800; font-size: 1rem; }
+  .hero-card .hint { max-width: 34ch; }
+  .hero-mic {
+    width: 74px; height: 74px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-ink);
+    border: none; padding: 0; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; margin-block: 6px;
+  }
+  .hero-mic svg { width: 30px; height: 30px; }
+  .hero-mic.mic-live { background: var(--danger); animation: micPulse 1.4s infinite; }
+  .hero-mic.mic-busy { opacity: 0.55; animation: none; }
+  .hero-mic:disabled { cursor: default; }
+
+  .add-part-btn { align-self: flex-start; background: transparent; color: var(--accent); border: 1.5px dashed var(--line); padding: 9px 14px; font-size: 0.82rem; border-radius: 8px; cursor: pointer; font-family: "Archivo", sans-serif; font-weight: 700; }
+
+  .time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .time-col { display: flex; flex-direction: column; gap: 4px; }
+  .time-label { font-size: 0.72rem; color: var(--ink-soft); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-family: "Archivo", sans-serif; }
+  .time-input-wrap { display: flex; gap: 6px; }
+  .time-input-wrap input[type="time"] { flex: 1; min-width: 0; }
+  .time-now-btn { flex: none; padding: 0 12px; background: transparent; border: 1.5px solid var(--line); color: var(--ink); border-radius: 8px; font-family: "Archivo", sans-serif; font-weight: 700; font-size: 0.78rem; cursor: pointer; }
+  .time-now-btn:active { transform: translateY(1px); }
+
+  button, .btn-link {
+    font-family: "Archivo", sans-serif;
+    font-weight: 700;
+    font-size: 0.88rem;
+    letter-spacing: 0.02em;
+    border-radius: 8px;
+    border: 1.5px solid transparent;
+    padding: 13px 16px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-decoration: none;
+  }
+  button:focus-visible, .btn-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-primary:active { transform: translateY(1px); }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn-ghost:active { transform: translateY(1px); }
+
+  .actions { display: flex; flex-direction: column; gap: 10px; }
+  .actions-row { display: flex; gap: 10px; }
+  .actions-row > * { flex: 1; }
+
+  .status { font-size: 0.82rem; color: var(--ok); min-height: 1.1em; display: flex; align-items: center; gap: 6px; }
+  .status[hidden] { display: none; }
+
+  .section-title { font-family: "Archivo", sans-serif; font-weight: 700; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); display: flex; justify-content: space-between; align-items: center; }
+
+  .entry-list { display: flex; flex-direction: column; gap: 8px; }
+  .entry { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--paper-raised); }
+  .entry-top { display: flex; justify-content: space-between; gap: 8px; font-size: 0.78rem; color: var(--ink-soft); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .entry-job { font-weight: 700; color: var(--ink); }
+  .entry-text { font-size: 0.88rem; line-height: 1.4; white-space: pre-wrap; }
+
+  .empty-note { font-size: 0.85rem; color: var(--ink-soft); padding: 10px 2px; }
+  .foot-note { font-size: 0.76rem; color: var(--ink-soft); line-height: 1.5; padding-inline: 2px; margin: 0; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">Job <span>Docket</span></div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span class="offline-pill" id="offlinePill" hidden>Offline</span>
+      <div class="docket-no" id="docketNo">#000000</div>
+    </div>
+  </header>
+
+  <div class="card hero-card" id="wholeJobCard">
+    <div class="hero-title">Dictate the whole job</div>
+    <div class="hint">Say the job, then the start and finish time, then what you did, then any parts — it sorts itself into the fields below</div>
+    <button class="hero-mic" id="wholeJobMic" type="button" aria-label="Record the whole job">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
+    </button>
+    <div class="status" id="wholeJobStatus" hidden></div>
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label for="tech">Your name</label>
+      <input type="text" id="tech" placeholder="e.g. Dave Mercer" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label for="jobRef">Job / vessel</label>
+      <div class="dictate-field dictate-field--input" id="jobWrap">
+        <input type="text" id="jobRef" placeholder="e.g. Tradify #4521 — Southern Cross" autocomplete="off">
+      </div>
+      <div class="hint" id="jobHint">Tap the mic to dictate, or use your keyboard's mic</div>
+    </div>
+
+    <div class="field">
+      <label>Time on the job</label>
+      <div class="time-row">
+        <div class="time-col">
+          <span class="time-label">Start</span>
+          <div class="time-input-wrap">
+            <input type="time" id="startTime">
+            <button type="button" class="time-now-btn" id="startNowBtn">Now</button>
+          </div>
+        </div>
+        <div class="time-col">
+          <span class="time-label">Finish</span>
+          <div class="time-input-wrap">
+            <input type="time" id="finishTime">
+            <button type="button" class="time-now-btn" id="finishNowBtn">Now</button>
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="durationHint">Optional — tap "Now" as you start and finish, or leave blank</div>
+    </div>
+
+    <div class="field">
+      <label for="notes">What you did</label>
+      <div class="dictate-field dictate-field--textarea" id="notesWrap">
+        <textarea id="notes" placeholder="e.g. Replaced H5000 compass fluid, recalibrated autopilot, tested under way — all good."></textarea>
+      </div>
+      <div class="hint" id="notesHint">Tap the mic to dictate, or use your keyboard's mic</div>
+    </div>
+
+    <div class="field">
+      <label>Parts used</label>
+      <div class="parts-rows" id="partsRows"></div>
+      <button class="add-part-btn" id="addPartBtn" type="button">+ Add a part</button>
+      <div class="hint">Type or dictate the part, then set the quantity</div>
+    </div>
+
+    <div class="field">
+      <label for="clientNote">Note for the client</label>
+      <div class="dictate-field dictate-field--textarea" id="clientNoteWrap">
+        <textarea id="clientNote" placeholder="e.g. Recommend replacing the impeller within 6 months — showing early wear."></textarea>
+      </div>
+      <div class="hint" id="clientNoteHint">Tap the mic to dictate, or use your keyboard's mic — optional</div>
+    </div>
+
+    <div class="field">
+      <label for="preview">Note — ready to paste into Tradify</label>
+      <textarea id="preview" readonly></textarea>
+    </div>
+
+    <div class="field">
+      <label for="emailTo">Email notes to</label>
+      <input type="email" id="emailTo" placeholder="e.g. office@yourcompany.com.au" autocomplete="off" inputmode="email">
+      <div class="hint">Saved on this phone — "Email note" sends straight here, no mail app needed</div>
+    </div>
+
+    <div class="field">
+      <label for="appPin">App PIN</label>
+      <input type="text" id="appPin" placeholder="Only if your office set one up" autocomplete="off" inputmode="numeric">
+      <div class="hint">Saved on this phone — needed once for the mic to work</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" id="copyBtn" type="button">Copy note</button>
+      <div class="actions-row">
+        <button class="btn-ghost" id="shareBtn" type="button" hidden>Share note</button>
+        <button class="btn-ghost" id="emailBtn" type="button">Email note</button>
+      </div>
+      <button class="btn-ghost" id="saveBtn" type="button">Save &amp; new entry</button>
+    </div>
+    <div class="status" id="status" hidden></div>
+  </div>
+
+  <div>
+    <div class="section-title">
+      <span>Today's entries</span>
+      <span id="countLabel"></span>
+    </div>
+    <div class="entry-list" id="entryList" style="margin-top:8px;"></div>
+    <div class="empty-note" id="emptyNote">Nothing saved yet on this phone — entries you save stay here as a backup until you clear them.</div>
+  </div>
+
+  <p class="foot-note">Nothing here reaches Tradify by itself — copy, share or email the note, then paste it into the job in Tradify. Typing and saving work offline; the mic and "Email note" both need a connection, since they call out to the transcription, tidy-up and email services — no signal, just type and use Copy instead once you're back in range.</p>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var MIC_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>';
+
+  var techEl = document.getElementById("tech");
+  var jobEl = document.getElementById("jobRef");
+  var startTimeEl = document.getElementById("startTime");
+  var finishTimeEl = document.getElementById("finishTime");
+  var startNowBtn = document.getElementById("startNowBtn");
+  var finishNowBtn = document.getElementById("finishNowBtn");
+  var durationHintEl = document.getElementById("durationHint");
+  var notesEl = document.getElementById("notes");
+  var clientNoteEl = document.getElementById("clientNote");
+  var emailToEl = document.getElementById("emailTo");
+  var previewEl = document.getElementById("preview");
+  var copyBtn = document.getElementById("copyBtn");
+  var shareBtn = document.getElementById("shareBtn");
+  var emailBtn = document.getElementById("emailBtn");
+  var saveBtn = document.getElementById("saveBtn");
+  var statusEl = document.getElementById("status");
+  var entryListEl = document.getElementById("entryList");
+  var emptyNoteEl = document.getElementById("emptyNote");
+  var countLabelEl = document.getElementById("countLabel");
+  var docketNoEl = document.getElementById("docketNo");
+  var partsRowsEl = document.getElementById("partsRows");
+  var addPartBtn = document.getElementById("addPartBtn");
+  var appPinEl = document.getElementById("appPin");
+  var offlinePill = document.getElementById("offlinePill");
+  var jobHintEl = document.getElementById("jobHint");
+  var notesHintEl = document.getElementById("notesHint");
+  var clientNoteHintEl = document.getElementById("clientNoteHint");
+  var wholeJobCardEl = document.getElementById("wholeJobCard");
+  var wholeJobMicEl = document.getElementById("wholeJobMic");
+  var wholeJobStatusEl = document.getElementById("wholeJobStatus");
+
+  var STORE_KEY = "jobDocket.v1";
+  var store = { tech: "", emailTo: "", pin: "", entries: [] };
+
+  function safeGet() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          store.tech = typeof parsed.tech === "string" ? parsed.tech : "";
+          store.emailTo = typeof parsed.emailTo === "string" ? parsed.emailTo : "";
+          store.pin = typeof parsed.pin === "string" ? parsed.pin : "";
+          store.entries = Array.isArray(parsed.entries) ? parsed.entries : [];
+        }
+      }
+    } catch (e) { /* storage unavailable — start fresh, silently */ }
+  }
+  function safeSave() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) { /* ignore */ }
+  }
+
+  function pad(n) { return n < 10 ? "0" + n : String(n); }
+  var WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  function formatDateTime(d) {
+    var weekday = WEEKDAYS[d.getDay()];
+    var day = pad(d.getDate());
+    var month = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
+    var hours = d.getHours();
+    var ampm = hours >= 12 ? "pm" : "am";
+    var h12 = hours % 12; if (h12 === 0) h12 = 12;
+    return weekday + ", " + day + " " + month + " " + d.getFullYear() + ", " + h12 + ":" + pad(d.getMinutes()) + ampm;
+  }
+  function docketNumber(d) {
+    return "#" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes());
+  }
+
+  // ---- Start/finish time helpers ("HH:MM" 24h strings from <input type="time">) ----
+  function nowTimeString() {
+    var d = new Date();
+    return pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  function formatTimeStr(hhmm) {
+    if (!hhmm) return "";
+    var bits = hhmm.split(":");
+    var h = parseInt(bits[0], 10);
+    var m = bits[1] || "00";
+    var ampm = h >= 12 ? "pm" : "am";
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ":" + m + ampm;
+  }
+  function durationText(startStr, finishStr) {
+    if (!startStr || !finishStr) return "";
+    var s = startStr.split(":").map(Number);
+    var f = finishStr.split(":").map(Number);
+    var diff = (f[0] * 60 + f[1]) - (s[0] * 60 + s[1]);
+    if (diff <= 0) return "";
+    var h = Math.floor(diff / 60), m = diff % 60;
+    return (h ? h + "h" : "") + (h && m ? " " : "") + (m ? m + "m" : "");
+  }
+  function updateDurationHint() {
+    var dur = durationText(startTimeEl.value, finishTimeEl.value);
+    durationHintEl.textContent = dur ? "That's " + dur + " on the job" : "Optional — tap \"Now\" as you start and finish, or leave blank";
+  }
+
+  // ---- Parts ----
+  function addPartRow(desc, qty) {
+    var row = document.createElement("div");
+    row.className = "parts-row";
+    if (!CAN_RECORD) row.style.gridTemplateColumns = "1fr 54px 32px";
+
+    var micBtn = null;
+    if (CAN_RECORD) {
+      micBtn = document.createElement("button");
+      micBtn.type = "button";
+      micBtn.className = "mic-btn";
+      micBtn.setAttribute("aria-label", "Dictate part");
+      micBtn.innerHTML = MIC_SVG;
+    }
+
+    var descInput = document.createElement("input");
+    descInput.type = "text";
+    descInput.placeholder = "e.g. Raymarine ram seal kit";
+    descInput.autocomplete = "off";
+    descInput.value = desc || "";
+    descInput.addEventListener("input", refreshPreview);
+
+    var qtyInput = document.createElement("input");
+    qtyInput.type = "number";
+    qtyInput.min = "1";
+    qtyInput.placeholder = "Qty";
+    qtyInput.value = qty || "1";
+    qtyInput.addEventListener("input", refreshPreview);
+
+    var removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "parts-remove";
+    removeBtn.setAttribute("aria-label", "Remove part");
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", function () { row.remove(); refreshPreview(); });
+
+    if (micBtn) row.appendChild(micBtn);
+    row.appendChild(descInput);
+    row.appendChild(qtyInput);
+    row.appendChild(removeBtn);
+    partsRowsEl.appendChild(row);
+    if (micBtn) {
+      attachRecorder(micBtn, showStatus, function (blob, btn, notify) {
+        transcribeBlob(blob, btn, notify, descInput, "part");
+      });
+    }
+    return row;
+  }
+  function collectParts() {
+    var parts = [];
+    partsRowsEl.querySelectorAll(".parts-row").forEach(function (row) {
+      var inputs = row.querySelectorAll("input");
+      var desc = inputs[0].value.trim();
+      var qty = inputs[1].value.trim();
+      if (desc) parts.push({ desc: desc, qty: qty || "1" });
+    });
+    return parts;
+  }
+  function clearParts() { partsRowsEl.innerHTML = ""; }
+
+  // ---- Note assembly ----
+  function buildNote() {
+    var job = jobEl.value.trim() || "(job not entered)";
+    var tech = techEl.value.trim() || "(name not entered)";
+    var notes = notesEl.value.trim() || "(no notes yet)";
+    var stamp = formatDateTime(new Date());
+    var lines = ["Job: " + job, "Tech: " + tech + " — " + stamp];
+    var startStr = startTimeEl.value, finishStr = finishTimeEl.value;
+    if (startStr || finishStr) {
+      var timeLine = "Time: ";
+      if (startStr && finishStr) {
+        timeLine += formatTimeStr(startStr) + " – " + formatTimeStr(finishStr);
+        var dur = durationText(startStr, finishStr);
+        if (dur) timeLine += " (" + dur + ")";
+      } else if (startStr) {
+        timeLine += "Started " + formatTimeStr(startStr);
+      } else {
+        timeLine += "Finished " + formatTimeStr(finishStr);
+      }
+      lines.push(timeLine);
+    }
+    lines.push("", notes);
+    var parts = collectParts();
+    if (parts.length) {
+      lines.push("", "Parts used:");
+      parts.forEach(function (p) { lines.push("- " + p.qty + "x " + p.desc); });
+    }
+    var clientNote = clientNoteEl.value.trim();
+    if (clientNote) {
+      lines.push("", "Note for the client:", clientNote);
+    }
+    return lines.join("\n");
+  }
+
+  function refreshPreview() {
+    var note = buildNote();
+    previewEl.value = note;
+    docketNoEl.textContent = docketNumber(new Date());
+  }
+
+  function showStatus(msg, isError, persist) {
+    statusEl.textContent = msg;
+    statusEl.style.color = isError ? "var(--danger)" : "var(--ok)";
+    statusEl.hidden = false;
+    window.clearTimeout(showStatus._t);
+    if (!persist) {
+      showStatus._t = window.setTimeout(function () { statusEl.hidden = true; }, 2600);
+    }
+  }
+
+  function showWholeJobStatus(msg, isError, persist) {
+    wholeJobStatusEl.textContent = msg;
+    wholeJobStatusEl.style.color = isError ? "var(--danger)" : "var(--ok)";
+    wholeJobStatusEl.hidden = false;
+    window.clearTimeout(showWholeJobStatus._t);
+    if (!persist) {
+      showWholeJobStatus._t = window.setTimeout(function () { wholeJobStatusEl.hidden = true; }, 2600);
+    }
+  }
+
+  function renderEntries() {
+    entryListEl.innerHTML = "";
+    var entries = store.entries;
+    countLabelEl.textContent = entries.length ? String(entries.length) : "";
+    emptyNoteEl.hidden = entries.length > 0;
+    for (var i = entries.length - 1; i >= 0; i--) {
+      var e = entries[i];
+      var div = document.createElement("div");
+      div.className = "entry";
+      var top = document.createElement("div");
+      top.className = "entry-top";
+      var jobSpan = document.createElement("span");
+      jobSpan.className = "entry-job";
+      jobSpan.textContent = e.job;
+      var timeSpan = document.createElement("span");
+      timeSpan.textContent = e.stamp;
+      top.appendChild(jobSpan);
+      top.appendChild(timeSpan);
+      var text = document.createElement("div");
+      text.className = "entry-text";
+      text.textContent = e.notes;
+      div.appendChild(top);
+      if (e.startTime || e.finishTime) {
+        var timeDiv = document.createElement("div");
+        timeDiv.className = "entry-text";
+        timeDiv.style.color = "var(--ink-soft)";
+        var timeBits = "Time: ";
+        if (e.startTime && e.finishTime) {
+          timeBits += formatTimeStr(e.startTime) + " – " + formatTimeStr(e.finishTime);
+          var edur = durationText(e.startTime, e.finishTime);
+          if (edur) timeBits += " (" + edur + ")";
+        } else if (e.startTime) {
+          timeBits += "Started " + formatTimeStr(e.startTime);
+        } else {
+          timeBits += "Finished " + formatTimeStr(e.finishTime);
+        }
+        timeDiv.textContent = timeBits;
+        div.appendChild(timeDiv);
+      }
+      div.appendChild(text);
+      if (e.parts && e.parts.length) {
+        var partsDiv = document.createElement("div");
+        partsDiv.className = "entry-text";
+        partsDiv.style.marginTop = "4px";
+        partsDiv.style.color = "var(--ink-soft)";
+        partsDiv.textContent = "Parts: " + e.parts.map(function (p) { return p.qty + "x " + p.desc; }).join(", ");
+        div.appendChild(partsDiv);
+      }
+      if (e.clientNote) {
+        var clientDiv = document.createElement("div");
+        clientDiv.className = "entry-text";
+        clientDiv.style.marginTop = "4px";
+        clientDiv.style.color = "var(--ink-soft)";
+        clientDiv.textContent = "For client: " + e.clientNote;
+        div.appendChild(clientDiv);
+      }
+      entryListEl.appendChild(div);
+    }
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        showStatus("Copied — now paste it into the job in Tradify.", false);
+      }, function () { fallbackCopy(text); });
+    } else {
+      fallbackCopy(text);
+    }
+  }
+  function fallbackCopy(text) {
+    previewEl.focus();
+    previewEl.select();
+    try {
+      var ok = document.execCommand("copy");
+      showStatus(ok ? "Copied — now paste it into the job in Tradify." : "Couldn't copy — the text is selected, copy it manually.", !ok);
+    } catch (e) {
+      showStatus("Couldn't copy — the text is selected above, copy it manually.", true);
+    }
+  }
+
+  copyBtn.addEventListener("click", function () {
+    refreshPreview();
+    copyText(previewEl.value);
+  });
+
+  function pinHeaders() {
+    var headers = { "content-type": "application/json" };
+    var pin = appPinEl.value.trim();
+    if (pin) headers["x-app-secret"] = pin;
+    return headers;
+  }
+
+  emailBtn.addEventListener("click", function () {
+    refreshPreview();
+    var to = emailToEl.value.trim();
+    if (!to) { showStatus("Add an email address above first.", true); return; }
+    var job = jobEl.value.trim() || "job note";
+    emailBtn.disabled = true;
+    showStatus("Sending…", false, true);
+    fetch("/api/send-note", {
+      method: "POST",
+      headers: pinHeaders(),
+      body: JSON.stringify({ to: to, subject: "Job note — " + job, text: previewEl.value })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (result) {
+      emailBtn.disabled = false;
+      if (!result.ok) {
+        showStatus((result.data && result.data.error) || "Couldn't send that — copy the note and send it manually.", true);
+        return;
+      }
+      showStatus("Emailed to " + to + ".", false);
+    }).catch(function () {
+      emailBtn.disabled = false;
+      showStatus("Couldn't reach the email service — copy the note and send it manually.", true);
+    });
+  });
+
+  if (navigator.share) {
+    shareBtn.hidden = false;
+    shareBtn.addEventListener("click", function () {
+      refreshPreview();
+      var job = jobEl.value.trim() || "job note";
+      navigator.share({ title: "Job note — " + job, text: previewEl.value }).catch(function () { /* cancelled — ignore */ });
+    });
+  }
+
+  saveBtn.addEventListener("click", function () {
+    var job = jobEl.value.trim();
+    var notes = notesEl.value.trim();
+    if (!job && !notes) { showStatus("Add a job and some notes first.", true); return; }
+    var now = new Date();
+    store.entries.push({
+      job: job || "(job not entered)",
+      tech: techEl.value.trim(),
+      notes: notes || "(no notes)",
+      parts: collectParts(),
+      clientNote: clientNoteEl.value.trim(),
+      startTime: startTimeEl.value,
+      finishTime: finishTimeEl.value,
+      stamp: formatDateTime(now)
+    });
+    store.tech = techEl.value.trim();
+    store.emailTo = emailToEl.value.trim();
+    store.pin = appPinEl.value.trim();
+    safeSave();
+    renderEntries();
+    jobEl.value = "";
+    notesEl.value = "";
+    clientNoteEl.value = "";
+    startTimeEl.value = "";
+    finishTimeEl.value = "";
+    clearParts();
+    addPartRow();
+    refreshPreview();
+    updateDurationHint();
+    showStatus("Saved on this phone. Ready for the next job.", false);
+    jobEl.focus();
+  });
+
+  addPartBtn.addEventListener("click", function () { addPartRow(); refreshPreview(); });
+
+  [techEl, jobEl, notesEl, clientNoteEl, emailToEl].forEach(function (el) { el.addEventListener("input", refreshPreview); });
+  [startTimeEl, finishTimeEl].forEach(function (el) {
+    el.addEventListener("input", function () { updateDurationHint(); refreshPreview(); });
+  });
+  startNowBtn.addEventListener("click", function () { startTimeEl.value = nowTimeString(); updateDurationHint(); refreshPreview(); });
+  finishNowBtn.addEventListener("click", function () { finishTimeEl.value = nowTimeString(); updateDurationHint(); refreshPreview(); });
+  emailToEl.addEventListener("change", function () { store.emailTo = emailToEl.value.trim(); safeSave(); });
+  appPinEl.addEventListener("change", function () { store.pin = appPinEl.value.trim(); safeSave(); });
+
+  // ---- Voice dictation: record on the phone, transcribe + tidy on the backend ----
+  var MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/mp4;codecs=mp4a.40.2"];
+  function pickRecordingMime() {
+    if (!(window.MediaRecorder && window.MediaRecorder.isTypeSupported)) return "";
+    for (var i = 0; i < MIME_CANDIDATES.length; i++) {
+      if (window.MediaRecorder.isTypeSupported(MIME_CANDIDATES[i])) return MIME_CANDIDATES[i];
+    }
+    return "";
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onloadend = function () {
+        var result = reader.result || "";
+        var idx = result.indexOf(",");
+        resolve(idx >= 0 ? result.slice(idx + 1) : result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  var CAN_RECORD = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+
+  // Records from a mic button and hands the finished blob to onBlobReady(blob, micBtn, notify).
+  // notify(msg, isError, persist) reports progress next to whichever button started the recording.
+  function attachRecorder(micBtn, notify, onBlobReady) {
+    var recording = false;
+    var mediaRecorder = null;
+    var chunks = [];
+    var activeStream = null;
+
+    micBtn.addEventListener("click", function () {
+      if (recording) { mediaRecorder.stop(); return; }
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        activeStream = stream;
+        chunks = [];
+        var mimeType = pickRecordingMime();
+        try {
+          mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType: mimeType }) : new MediaRecorder(stream);
+        } catch (e) {
+          mediaRecorder = new MediaRecorder(stream);
+        }
+        mediaRecorder.addEventListener("dataavailable", function (e) {
+          if (e.data && e.data.size) chunks.push(e.data);
+        });
+        mediaRecorder.addEventListener("stop", function () {
+          activeStream.getTracks().forEach(function (t) { t.stop(); });
+          recording = false;
+          micBtn.classList.remove("mic-live");
+          var blob = new Blob(chunks, { type: mediaRecorder.mimeType || mimeType || "audio/webm" });
+          onBlobReady(blob, micBtn, notify);
+        });
+        mediaRecorder.start();
+        recording = true;
+        micBtn.classList.add("mic-live");
+        notify("Recording… tap again to stop.", false, true);
+      }).catch(function () {
+        notify("Microphone access was blocked — use your keyboard's mic instead.", true);
+      });
+    });
+  }
+
+  function transcribeBlob(blob, micBtn, notify, targetEl, fieldKey) {
+    micBtn.disabled = true;
+    micBtn.classList.add("mic-busy");
+    notify("Transcribing…", false, true);
+    blobToBase64(blob).then(function (base64) {
+      return fetch("/api/dictate", {
+        method: "POST",
+        headers: pinHeaders(),
+        body: JSON.stringify({ audioBase64: base64, mimeType: blob.type, field: fieldKey })
+      });
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (result) {
+      micBtn.disabled = false;
+      micBtn.classList.remove("mic-busy");
+      if (!result.ok) {
+        notify((result.data && result.data.error) || "Couldn't transcribe that — try again.", true);
+        return;
+      }
+      var text = ((result.data && (result.data.cleaned || result.data.transcript)) || "").trim();
+      if (!text) { notify("Didn't catch anything — try again closer to the mic.", true); return; }
+      var existing = targetEl.value.trim();
+      targetEl.value = existing ? existing + " " + text : text;
+      refreshPreview();
+      notify("Added.", false);
+    }).catch(function () {
+      micBtn.disabled = false;
+      micBtn.classList.remove("mic-busy");
+      notify("Couldn't reach the transcription service — check your connection.", true);
+    });
+  }
+
+  function transcribeWholeJob(blob, micBtn, notify) {
+    micBtn.disabled = true;
+    micBtn.classList.add("mic-busy");
+    notify("Transcribing the whole job…", false, true);
+    blobToBase64(blob).then(function (base64) {
+      return fetch("/api/dictate", {
+        method: "POST",
+        headers: pinHeaders(),
+        body: JSON.stringify({ audioBase64: base64, mimeType: blob.type, field: "full" })
+      });
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (result) {
+      micBtn.disabled = false;
+      micBtn.classList.remove("mic-busy");
+      if (!result.ok) {
+        notify((result.data && result.data.error) || "Couldn't transcribe that — try again.", true);
+        return;
+      }
+      var data = result.data || {};
+      var gotSomething = false;
+      if (data.jobRef) { jobEl.value = data.jobRef; gotSomething = true; }
+      if (data.startTime) { startTimeEl.value = data.startTime; gotSomething = true; }
+      if (data.finishTime) { finishTimeEl.value = data.finishTime; gotSomething = true; }
+      if (data.notes) { notesEl.value = data.notes; gotSomething = true; }
+      if (Array.isArray(data.parts) && data.parts.length) {
+        clearParts();
+        data.parts.forEach(function (p) { addPartRow(p.desc, p.qty); });
+        gotSomething = true;
+      }
+      if (!partsRowsEl.children.length) addPartRow();
+      if (!gotSomething) { notify("Didn't catch anything — try again closer to the mic.", true); return; }
+      updateDurationHint();
+      refreshPreview();
+      notify("Filled in below — check it over.", false);
+      showStatus("Filled in from your dictation — check it over before saving.", false);
+    }).catch(function () {
+      micBtn.disabled = false;
+      micBtn.classList.remove("mic-busy");
+      notify("Couldn't reach the transcription service — check your connection.", true);
+    });
+  }
+
+  function setupFieldDictation(wrapEl, targetEl, hintEl, fieldKey) {
+    if (!CAN_RECORD) return;
+    var micBtn = document.createElement("button");
+    micBtn.type = "button";
+    micBtn.className = "mic-btn";
+    micBtn.setAttribute("aria-label", "Dictate");
+    micBtn.innerHTML = MIC_SVG;
+    wrapEl.appendChild(micBtn);
+    wrapEl.classList.add("has-mic");
+    if (hintEl) hintEl.textContent = "Tap the mic, speak, tap again to stop — Claude tidies it up";
+    attachRecorder(micBtn, showStatus, function (blob, btn, notify) {
+      transcribeBlob(blob, btn, notify, targetEl, fieldKey);
+    });
+  }
+
+  setupFieldDictation(document.getElementById("jobWrap"), jobEl, jobHintEl, "jobRef");
+  setupFieldDictation(document.getElementById("notesWrap"), notesEl, notesHintEl, "notes");
+  setupFieldDictation(document.getElementById("clientNoteWrap"), clientNoteEl, clientNoteHintEl, "clientNote");
+
+  if (CAN_RECORD) {
+    attachRecorder(wholeJobMicEl, showWholeJobStatus, function (blob, btn, notify) {
+      transcribeWholeJob(blob, btn, notify);
+    });
+  } else {
+    wholeJobCardEl.hidden = true;
+  }
+
+  // Lets an iOS Shortcut ("Hey Siri, <your phrase>") jump straight to recording:
+  // open this app's link with ?autorecord=1 and it starts the whole-job mic itself.
+  // iOS may still ask you to tap once the first time, depending on Safari's mic
+  // permission rules on the phone — after that it should start on its own.
+  (function maybeAutoRecord() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get("autorecord") === "1" && CAN_RECORD) {
+        window.setTimeout(function () { wholeJobMicEl.click(); }, 350);
+      }
+    } catch (e) { /* ignore */ }
+  })();
+
+  // ---- Offline indicator ----
+  function updateOnlineState() { offlinePill.hidden = navigator.onLine; }
+  window.addEventListener("online", updateOnlineState);
+  window.addEventListener("offline", updateOnlineState);
+  updateOnlineState();
+
+  // ---- Service worker (offline app shell) ----
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("service-worker.js").catch(function () { /* offline install not critical */ });
+    });
+  }
+
+  safeGet();
+  if (store.tech) techEl.value = store.tech;
+  if (store.emailTo) emailToEl.value = store.emailTo;
+  if (store.pin) appPinEl.value = store.pin;
+  addPartRow();
+  renderEntries();
+  refreshPreview();
+  updateDurationHint();
+})();
+</script>
+</body>
+</html>
