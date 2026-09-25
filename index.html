@@ -311,7 +311,7 @@ button:focus-visible, .btn-link:focus-visible { outline: 2px solid var(--focus);
 <div class="field">
 <label for="emailTo">Email notes to</label>
 <input type="email" id="emailTo" placeholder="e.g. office@yourcompany.com.au" autocomplete="off" inputmode="email">
-<div class="hint">Saved on this phone — "Email note" sends straight here, no mail app needed</div>
+<div class="hint">Saved on this phone — used to send the confirmation email when you hit Submit</div>
 </div>
 
 <div class="field">
@@ -321,12 +321,8 @@ button:focus-visible, .btn-link:focus-visible { outline: 2px solid var(--focus);
 </div>
 
 <div class="actions">
-<button class="btn-primary" id="copyBtn" type="button">Copy note</button>
-<div class="actions-row">
-<button class="btn-ghost" id="shareBtn" type="button" hidden>Share note</button>
-<button class="btn-ghost" id="emailBtn" type="button">Email note</button>
-</div>
-<button class="btn-ghost" id="saveBtn" type="button">Save &amp; new entry</button>
+<button class="btn-primary" id="submitBtn" type="button">Submit</button>
+<button class="btn-ghost" id="copyBtn" type="button">Copy note</button>
 </div>
 <div class="status" id="status" hidden></div>
 </div>
@@ -337,10 +333,10 @@ button:focus-visible, .btn-link:focus-visible { outline: 2px solid var(--focus);
 <span id="countLabel"></span>
 </div>
 <div class="entry-list" id="entryList" style="margin-top:8px;"></div>
-<div class="empty-note" id="emptyNote">Nothing saved yet on this phone — entries you save stay here as a backup until you clear them.</div>
+<div class="empty-note" id="emptyNote">Nothing submitted yet on this phone — entries you submit stay here as a backup until you clear them.</div>
 </div>
 
-<p class="foot-note">Nothing here reaches Tradify by itself — copy, share or email the note, then paste it into the job in Tradify. Typing and saving work offline; the mic and "Email note" both need a connection, since they call out to the transcription, tidy-up and email services — no signal, just type and use Copy instead once you're back in range.</p>
+<p class="foot-note">Hitting Submit logs the job with the office and emails a confirmation. Tradify itself isn't updated automatically yet, so keep using Copy to paste the note into the job there in the meantime. Typing works offline; the mic and Submit both need a connection, since they call out to the transcription, tidy-up, storage and email services — no signal, just type and use Copy once you're back in range.</p>
 
 </div>
 
@@ -362,9 +358,7 @@ var clientNoteEl = document.getElementById("clientNote");
 var emailToEl = document.getElementById("emailTo");
 var previewEl = document.getElementById("preview");
 var copyBtn = document.getElementById("copyBtn");
-var shareBtn = document.getElementById("shareBtn");
-var emailBtn = document.getElementById("emailBtn");
-var saveBtn = document.getElementById("saveBtn");
+var submitBtn = document.getElementById("submitBtn");
 var statusEl = document.getElementById("status");
 var entryListEl = document.getElementById("entryList");
 var emptyNoteEl = document.getElementById("emptyNote");
@@ -661,47 +655,13 @@ if (pin) headers["x-app-secret"] = pin;
 return headers;
 }
 
-emailBtn.addEventListener("click", function () {
-refreshPreview();
-var to = emailToEl.value.trim();
-if (!to) { showStatus("Add an email address above first.", true); return; }
-var job = jobEl.value.trim() || "job note";
-emailBtn.disabled = true;
-showStatus("Sending…", false, true);
-fetch("/api/send-note", {
-method: "POST",
-headers: pinHeaders(),
-body: JSON.stringify({ to: to, subject: "Job note — " + job, text: previewEl.value })
-}).then(function (res) {
-return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
-}).then(function (result) {
-emailBtn.disabled = false;
-if (!result.ok) {
-showStatus((result.data && result.data.error) || "Couldn't send that — copy the note and send it manually.", true);
-return;
-}
-showStatus("Emailed to " + to + ".", false);
-}).catch(function () {
-emailBtn.disabled = false;
-showStatus("Couldn't reach the email service — copy the note and send it manually.", true);
-});
-});
-
-if (navigator.share) {
-shareBtn.hidden = false;
-shareBtn.addEventListener("click", function () {
-refreshPreview();
-var job = jobEl.value.trim() || "job note";
-navigator.share({ title: "Job note — " + job, text: previewEl.value }).catch(function () { /* cancelled — ignore */ });
-});
-}
-
-saveBtn.addEventListener("click", function () {
+submitBtn.addEventListener("click", function () {
 var job = jobEl.value.trim();
 var notes = notesEl.value.trim();
 if (!job && !notes) { showStatus("Add a job and some notes first.", true); return; }
+refreshPreview();
 var now = new Date();
-store.entries.push({
+var entry = {
 job: job || "(job not entered)",
 tech: techEl.value.trim(),
 notes: notes || "(no notes)",
@@ -709,6 +669,30 @@ parts: collectParts(),
 clientNote: clientNoteEl.value.trim(),
 startTime: startTimeEl.value,
 finishTime: finishTimeEl.value,
+emailTo: emailToEl.value.trim()
+};
+submitBtn.disabled = true;
+showStatus("Submitting…", false, true);
+fetch("/api/submit-entry", {
+method: "POST",
+headers: pinHeaders(),
+body: JSON.stringify(entry)
+}).then(function (res) {
+return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+}).then(function (result) {
+submitBtn.disabled = false;
+if (!result.ok) {
+showStatus((result.data && result.data.error) || "Couldn't submit that — try again, or copy the note and send it manually.", true);
+return;
+}
+store.entries.push({
+job: entry.job,
+tech: entry.tech,
+notes: entry.notes,
+parts: entry.parts,
+clientNote: entry.clientNote,
+startTime: entry.startTime,
+finishTime: entry.finishTime,
 stamp: formatDateTime(now)
 });
 store.tech = techEl.value.trim();
@@ -725,8 +709,14 @@ clearParts();
 addPartRow();
 refreshPreview();
 updateDurationHint();
-showStatus("Saved on this phone. Ready for the next job.", false);
+var confirmMsg = "Submitted — logged with the office.";
+if (result.data && result.data.emailed) confirmMsg += " Confirmation emailed to " + entry.emailTo + ".";
+showStatus(confirmMsg, false);
 jobEl.focus();
+}).catch(function () {
+submitBtn.disabled = false;
+showStatus("Couldn't reach the server — try again, or copy the note and send it manually.", true);
+});
 });
 
 addPartBtn.addEventListener("click", function () { addPartRow(); refreshPreview(); });
