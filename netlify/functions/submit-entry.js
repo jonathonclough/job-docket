@@ -18,6 +18,11 @@
 // RESEND_API_KEY — from resend.com (same as send-note.js)
 // FROM_EMAIL — optional, see send-note.js
 // APP_SECRET — same PIN as the other functions, if you set one
+// NETLIFY_BLOBS_TOKEN — optional. Only needed if Netlify's automatic
+// storage setup isn't working (shows as "MissingBlobsEnvironmentError").
+// Create one at Netlify -> user settings -> Applications -> Personal
+// access tokens, then add it here as an environment variable. If this
+// isn't set, storage falls back to Netlify's normal automatic setup.
 
 const { getStore } = require("@netlify/blobs");
 
@@ -33,7 +38,11 @@ if (!checkSecret(event, appSecret)) {
 return { statusCode: 401, body: JSON.stringify({ error: "Wrong app PIN — check with your office." }) };
 }
 
-const store = getStore("job-docket-submissions");
+const BLOBS_SITE_ID = "5487a496-1020-4e3e-b581-cd5738e251d8";
+const blobsToken = process.env.NETLIFY_BLOBS_TOKEN;
+const store = blobsToken
+  ? getStore({ name: "job-docket-submissions", siteID: BLOBS_SITE_ID, token: blobsToken })
+  : getStore("job-docket-submissions");
 
 if (event.httpMethod === "GET") {
 try {
