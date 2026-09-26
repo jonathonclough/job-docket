@@ -41,7 +41,9 @@ exports.handler = async (event) => {
       const cached = await store.get("current", { type: "json" });
       return {
         statusCode: 200,
-        headers: { "content-type": "application/json" },
+        // The sync refreshes this roughly hourly — never let a browser/CDN
+        // cache serve an old copy of it (see the same fix in submit-entry.js).
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
         body: JSON.stringify(cached || { updatedAt: null, jobs: [] })
       };
     } catch (e) {
