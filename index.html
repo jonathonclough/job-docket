@@ -220,6 +220,21 @@ button:focus-visible, .btn-link:focus-visible { outline: 2px solid var(--focus);
 .entry-job { font-weight: 700; color: var(--ink); }
 .entry-text { font-size: 0.88rem; line-height: 1.4; white-space: pre-wrap; }
 
+.job-suggest {
+position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+background: var(--paper-raised); border: 1.5px solid var(--line); border-radius: 8px;
+max-height: 248px; overflow-y: auto; z-index: 30;
+box-shadow: 0 8px 20px rgba(11, 36, 54, 0.18);
+}
+.job-suggest-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
+.job-suggest-item:last-child { border-bottom: none; }
+.job-suggest-item:active { background: var(--paper); }
+.job-suggest-num { font-family: "Space Mono", ui-monospace, Menlo, monospace; font-size: 0.76rem; color: var(--accent); font-weight: 700; }
+.job-suggest-cust { font-weight: 600; font-size: 0.9rem; }
+.job-suggest-ref { font-size: 0.78rem; color: var(--ink-soft); margin-top: 1px; }
+.job-suggest-empty { padding: 10px 12px; font-size: 0.82rem; color: var(--ink-soft); }
+input#jobRef.job-linked { border-color: var(--ok); }
+
 .empty-note { font-size: 0.85rem; color: var(--ink-soft); padding: 10px 2px; }
 .foot-note { font-size: 0.76rem; color: var(--ink-soft); line-height: 1.5; padding-inline: 2px; margin: 0; }
 </style>
@@ -264,8 +279,9 @@ button:focus-visible, .btn-link:focus-visible { outline: 2px solid var(--focus);
 <label for="jobRef">Job / vessel</label>
 <div class="dictate-field dictate-field--input" id="jobWrap">
 <input type="text" id="jobRef" placeholder="e.g. Tradify #4521 — Southern Cross" autocomplete="off">
+<div class="job-suggest" id="jobSuggest" hidden></div>
 </div>
-<div class="hint" id="jobHint">Tap the mic to dictate, or use your keyboard's mic</div>
+<div class="hint" id="jobHint">Tap the mic to dictate, or tap the field to find it in Tradify</div>
 </div>
 
 <div class="field">
@@ -345,7 +361,7 @@ button:focus-visible, .btn-link:focus-visible { outline: 2px solid var(--focus);
 <div class="empty-note" id="emptyNote">Nothing submitted yet on this phone — entries you submit stay here as a backup until you clear them.</div>
 </div>
 
-<p class="foot-note">Hitting Submit logs the job with the office and emails a confirmation. Tradify itself isn't updated automatically yet, so keep using Copy to paste the note into the job there in the meantime. Typing works offline; the mic and Submit both need a connection, since they call out to the transcription, tidy-up, storage and email services — no signal, just type and use Copy once you're back in range.</p>
+<p class="foot-note">Hitting Submit logs the job with the office, emails a confirmation, and queues it to be entered into Tradify. Picking the job from the dropdown under "Job / vessel" (instead of just typing or dictating it) makes that match exact — worth doing whenever you can. Typing works offline; the mic, the job picker and Submit all need a connection, since they call out to the transcription, tidy-up, storage and email services — no signal, just type and use Copy once you're back in range.</p>
 
 </div>
 
@@ -378,6 +394,7 @@ var addPartBtn = document.getElementById("addPartBtn");
 var appPinEl = document.getElementById("appPin");
 var offlinePill = document.getElementById("offlinePill");
 var jobHintEl = document.getElementById("jobHint");
+var jobSuggestEl = document.getElementById("jobSuggest");
 var notesHintEl = document.getElementById("notesHint");
 var clientNoteHintEl = document.getElementById("clientNoteHint");
 var wholeJobCardEl = document.getElementById("wholeJobCard");
@@ -664,6 +681,127 @@ if (pin) headers["x-app-secret"] = pin;
 return headers;
 }
 
+// ---- Job picker: a cached copy of Tradify's Active Jobs list, so the tech
+// can find the exact job by tapping instead of relying only on a typed or
+// dictated name. Tradify has no API, so this list is scraped into place on
+// a schedule by netlify/functions/job-list.js — the app just reads it and
+// caches it locally so it still works with no signal. Picking a job stores
+// its exact Tradify job number on the submission, which lets the sync open
+// that job directly with no name-matching guesswork.
+var JOB_LIST_CACHE_KEY = "jobDocket.jobList.v1";
+var jobList = [];
+var selectedJob = null; // {jobNumber, customer, reference} once picked from the list
+var jobHintDefaultText = "";
+
+function escapeHtml(s) {
+return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c];
+});
+}
+
+function loadJobListCache() {
+try {
+var raw = localStorage.getItem(JOB_LIST_CACHE_KEY);
+if (raw) {
+var parsed = JSON.parse(raw);
+if (parsed && Array.isArray(parsed.jobs)) jobList = parsed.jobs;
+}
+} catch (e) { /* ignore */ }
+}
+function saveJobListCache(updatedAt) {
+try { localStorage.setItem(JOB_LIST_CACHE_KEY, JSON.stringify({ updatedAt: updatedAt, jobs: jobList })); } catch (e) { /* ignore */ }
+}
+function refreshJobList() {
+fetch("/api/job-list", { headers: pinHeaders() }).then(function (res) {
+return res.json();
+}).then(function (data) {
+if (data && Array.isArray(data.jobs) && data.jobs.length) {
+jobList = data.jobs;
+saveJobListCache(data.updatedAt);
+}
+}).catch(function () { /* offline, or not set up yet — keep using the cache */ });
+}
+
+function jobDisplayText(j) {
+return j.jobNumber + " — " + j.customer + (j.reference ? " — " + j.reference : "");
+}
+
+function matchJobs(query) {
+var q = query.trim().toLowerCase();
+if (!q) return [];
+var starts = [], contains = [];
+for (var i = 0; i < jobList.length; i++) {
+var j = jobList[i];
+var numHay = (j.jobNumber || "").toLowerCase();
+var custHay = (j.customer || "").toLowerCase();
+var refHay = (j.reference || "").toLowerCase();
+if (numHay.indexOf(q) === 0 || custHay.indexOf(q) === 0) starts.push(j);
+else if (numHay.indexOf(q) !== -1 || custHay.indexOf(q) !== -1 || refHay.indexOf(q) !== -1) contains.push(j);
+}
+return starts.concat(contains).slice(0, 8);
+}
+
+function renderJobSuggestions(matches) {
+jobSuggestEl.innerHTML = "";
+if (!matches.length) {
+jobSuggestEl.hidden = true;
+return;
+}
+matches.forEach(function (j) {
+var item = document.createElement("div");
+item.className = "job-suggest-item";
+item.innerHTML = '<div><span class="job-suggest-num">' + escapeHtml(j.jobNumber) + "</span> — " +
+'<span class="job-suggest-cust">' + escapeHtml(j.customer) + "</span></div>" +
+(j.reference ? '<div class="job-suggest-ref">' + escapeHtml(j.reference) + "</div>" : "");
+item.addEventListener("mousedown", function (ev) { ev.preventDefault(); selectJob(j); });
+jobSuggestEl.appendChild(item);
+});
+jobSuggestEl.hidden = false;
+}
+
+function selectJob(j) {
+selectedJob = j;
+jobEl.value = jobDisplayText(j);
+jobSuggestEl.hidden = true;
+updateJobLockUI();
+refreshPreview();
+}
+
+function updateJobLockUI() {
+if (selectedJob && jobEl.value === jobDisplayText(selectedJob)) {
+jobEl.classList.add("job-linked");
+jobHintEl.style.color = "var(--ok)";
+jobHintEl.textContent = "Linked to Tradify job " + selectedJob.jobNumber + " — editing the text unlinks it";
+} else {
+selectedJob = null;
+jobEl.classList.remove("job-linked");
+jobHintEl.style.color = "";
+jobHintEl.textContent = jobHintDefaultText;
+}
+}
+
+// Called after dictation fills the job field, so a close (or exact) match
+// from Tradify shows up immediately to tap and confirm.
+function afterJobTextSet() {
+updateJobLockUI();
+renderJobSuggestions(matchJobs(jobEl.value));
+}
+
+jobEl.addEventListener("input", function () {
+updateJobLockUI();
+renderJobSuggestions(matchJobs(jobEl.value));
+});
+jobEl.addEventListener("focus", function () {
+if (jobEl.value.trim()) renderJobSuggestions(matchJobs(jobEl.value));
+else if (jobList.length) renderJobSuggestions(jobList.slice(0, 8));
+});
+jobEl.addEventListener("blur", function () {
+window.setTimeout(function () { jobSuggestEl.hidden = true; }, 150);
+});
+jobEl.addEventListener("keydown", function (ev) {
+if (ev.key === "Escape") jobSuggestEl.hidden = true;
+});
+
 submitBtn.addEventListener("click", function () {
 var job = jobEl.value.trim();
 var notes = notesEl.value.trim();
@@ -672,6 +810,7 @@ refreshPreview();
 var now = new Date();
 var entry = {
 job: job || "(job not entered)",
+jobNumber: (selectedJob && jobEl.value === jobDisplayText(selectedJob)) ? selectedJob.jobNumber : "",
 tech: techEl.value.trim(),
 notes: notes || "(no notes)",
 parts: collectParts(),
@@ -710,6 +849,9 @@ store.pin = appPinEl.value.trim();
 safeSave();
 renderEntries();
 jobEl.value = "";
+selectedJob = null;
+updateJobLockUI();
+jobSuggestEl.hidden = true;
 notesEl.value = "";
 clientNoteEl.value = "";
 startTimeEl.value = "";
@@ -826,6 +968,7 @@ var text = ((result.data && (result.data.cleaned || result.data.transcript)) || 
 if (!text) { notify("Didn't catch anything — try again closer to the mic.", true); return; }
 var existing = targetEl.value.trim();
 targetEl.value = existing ? existing + " " + text : text;
+if (targetEl === jobEl) afterJobTextSet();
 refreshPreview();
 notify("Added.", false);
 }).catch(function () {
@@ -856,7 +999,7 @@ return;
 }
 var data = result.data || {};
 var gotSomething = false;
-if (data.jobRef) { jobEl.value = data.jobRef; gotSomething = true; }
+if (data.jobRef) { jobEl.value = data.jobRef; afterJobTextSet(); gotSomething = true; }
 if (data.startTime) { startTimeEl.value = data.startTime; gotSomething = true; }
 if (data.finishTime) { finishTimeEl.value = data.finishTime; gotSomething = true; }
 if (data.notes) { notesEl.value = data.notes; gotSomething = true; }
@@ -896,6 +1039,9 @@ transcribeBlob(blob, btn, notify, targetEl, fieldKey);
 setupFieldDictation(document.getElementById("jobWrap"), jobEl, jobHintEl, "jobRef");
 setupFieldDictation(document.getElementById("notesWrap"), notesEl, notesHintEl, "notes");
 setupFieldDictation(document.getElementById("clientNoteWrap"), clientNoteEl, clientNoteHintEl, "clientNote");
+jobHintDefaultText = jobHintEl.textContent;
+loadJobListCache();
+refreshJobList();
 
 if (CAN_RECORD) {
 attachRecorder(wholeJobMicEl, showWholeJobStatus, function (blob, btn, notify) {
