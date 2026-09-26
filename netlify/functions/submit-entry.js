@@ -51,7 +51,11 @@ const keys = blobs.map((b) => b.key).sort().reverse().slice(0, 200);
 const items = await Promise.all(keys.map((k) => store.get(k, { type: "json" })));
 return {
 statusCode: 200,
-headers: { "content-type": "application/json" },
+// This list changes every time a job is submitted or the sync updates a
+// status — never let a browser/CDN cache serve a stale copy (that looked
+// like a "silent stall" once: a PATCH had succeeded but a GET right after
+// it still showed the old status).
+headers: { "content-type": "application/json", "cache-control": "no-store" },
 body: JSON.stringify({ submissions: items.filter(Boolean) })
 };
 } catch (e) {
