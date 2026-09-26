@@ -124,7 +124,6 @@ input[type="text"]:focus, input[type="email"]:focus, textarea:focus { outline: 2
 .dictate-field.has-mic textarea { padding-right: 46px; }
 
 textarea#notes { min-height: 128px; line-height: 1.45; }
-textarea#preview { min-height: 150px; line-height: 1.5; font-family: "Space Mono", ui-monospace, Menlo, monospace; font-size: 0.86rem; }
 
 .mic-btn {
 position: absolute;
@@ -329,17 +328,6 @@ input#jobRef.job-linked { border-color: var(--ok); }
 </div>
 
 <div class="field">
-<label for="preview">Note — ready to paste into Tradify</label>
-<textarea id="preview" readonly></textarea>
-</div>
-
-<div class="field">
-<label for="emailTo">Email notes to</label>
-<input type="email" id="emailTo" placeholder="e.g. office@yourcompany.com.au" autocomplete="off" inputmode="email">
-<div class="hint">Saved on this phone — used to send the confirmation email when you hit Submit</div>
-</div>
-
-<div class="field">
 <label for="appPin">App PIN</label>
 <input type="text" id="appPin" placeholder="Only if your office set one up" autocomplete="off" inputmode="numeric">
 <div class="hint">Saved on this phone — needed once for the mic to work</div>
@@ -347,7 +335,6 @@ input#jobRef.job-linked { border-color: var(--ok); }
 
 <div class="actions">
 <button class="btn-primary" id="submitBtn" type="button">Submit</button>
-<button class="btn-ghost" id="copyBtn" type="button">Copy note</button>
 </div>
 <div class="status" id="status" hidden></div>
 </div>
@@ -358,10 +345,11 @@ input#jobRef.job-linked { border-color: var(--ok); }
 <span id="countLabel"></span>
 </div>
 <div class="entry-list" id="entryList" style="margin-top:8px;"></div>
-<div class="empty-note" id="emptyNote">Nothing submitted yet on this phone — entries you submit stay here as a backup until you clear them.</div>
+<div class="empty-note" id="emptyNote">Nothing submitted today on this phone — entries clear each day, but every submission is kept in the full log.</div>
+<a href="submissions.html" style="display:inline-block; margin-top:10px; font-family:'Archivo',sans-serif; font-weight:700; font-size:0.78rem; letter-spacing:0.02em; color:var(--accent); text-decoration:none;">View full submission log &rarr;</a>
 </div>
 
-<p class="foot-note">Hitting Submit logs the job with the office, emails a confirmation, and queues it to be entered into Tradify. Picking the job from the dropdown under "Job / vessel" (instead of just typing or dictating it) makes that match exact — worth doing whenever you can. Typing works offline; the mic, the job picker and Submit all need a connection, since they call out to the transcription, tidy-up, storage and email services — no signal, just type and use Copy once you're back in range.</p>
+<p class="foot-note">Hitting Submit logs the job with the office, emails a confirmation, and queues it to be entered into Tradify. Picking the job from the dropdown under "Job / vessel" (instead of just typing or dictating it) makes that match exact — worth doing whenever you can. Typing works offline; the mic, the job picker and Submit all need a connection, since they call out to the transcription, tidy-up, storage and email services — with no signal, keep what you've typed and hit Submit once you're back in range.</p>
 
 </div>
 
@@ -380,9 +368,6 @@ var finishNowBtn = document.getElementById("finishNowBtn");
 var durationHintEl = document.getElementById("durationHint");
 var notesEl = document.getElementById("notes");
 var clientNoteEl = document.getElementById("clientNote");
-var emailToEl = document.getElementById("emailTo");
-var previewEl = document.getElementById("preview");
-var copyBtn = document.getElementById("copyBtn");
 var submitBtn = document.getElementById("submitBtn");
 var statusEl = document.getElementById("status");
 var entryListEl = document.getElementById("entryList");
@@ -401,8 +386,12 @@ var wholeJobCardEl = document.getElementById("wholeJobCard");
 var wholeJobMicEl = document.getElementById("wholeJobMic");
 var wholeJobStatusEl = document.getElementById("wholeJobStatus");
 
+// Fixed office inbox for the confirmation email — no longer editable in the
+// app since it never changes; update it here if it ever does.
+var OFFICE_EMAIL = "tradify.agent@cloughmarine.com.au";
+
 var STORE_KEY = "jobDocket.v1";
-var store = { tech: "", emailTo: "", pin: "", entries: [] };
+var store = { tech: "", pin: "", entries: [] };
 
 function safeGet() {
 try {
@@ -411,7 +400,6 @@ if (raw) {
 var parsed = JSON.parse(raw);
 if (parsed && typeof parsed === "object") {
 store.tech = typeof parsed.tech === "string" ? parsed.tech : "";
-store.emailTo = typeof parsed.emailTo === "string" ? parsed.emailTo : "";
 store.pin = typeof parsed.pin === "string" ? parsed.pin : "";
 store.entries = Array.isArray(parsed.entries) ? parsed.entries : [];
 }
@@ -420,6 +408,15 @@ store.entries = Array.isArray(parsed.entries) ? parsed.entries : [];
 }
 function safeSave() {
 try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) { /* ignore */ }
+}
+
+// Keep only today's entries on the phone — every submission is kept safely
+// on the server regardless, and is visible in full on submissions.html.
+function pruneOldEntries() {
+var today = dayKey(new Date());
+var before = store.entries.length;
+store.entries = store.entries.filter(function (e) { return e.day === today; });
+if (store.entries.length !== before) safeSave();
 }
 
 function pad(n) { return n < 10 ? "0" + n : String(n); }
@@ -435,6 +432,9 @@ return weekday + ", " + day + " " + month + " " + d.getFullYear() + ", " + h12 +
 }
 function docketNumber(d) {
 return "#" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + "-" + pad(d.getHours()) + pad(d.getMinutes());
+}
+function dayKey(d) {
+return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 }
 
 // ---- Start/finish time helpers ("HH:MM" 24h strings from <input type="time">) ----
@@ -489,21 +489,21 @@ descInput.type = "text";
 descInput.placeholder = "e.g. Raymarine ram seal kit";
 descInput.autocomplete = "off";
 descInput.value = desc || "";
-descInput.addEventListener("input", refreshPreview);
+descInput.addEventListener("input", updateDocketNumber);
 
 var qtyInput = document.createElement("input");
 qtyInput.type = "number";
 qtyInput.min = "1";
 qtyInput.placeholder = "Qty";
 qtyInput.value = sanitizeQty(qty);
-qtyInput.addEventListener("input", refreshPreview);
+qtyInput.addEventListener("input", updateDocketNumber);
 
 var removeBtn = document.createElement("button");
 removeBtn.type = "button";
 removeBtn.className = "parts-remove";
 removeBtn.setAttribute("aria-label", "Remove part");
 removeBtn.textContent = "×";
-removeBtn.addEventListener("click", function () { row.remove(); refreshPreview(); });
+removeBtn.addEventListener("click", function () { row.remove(); updateDocketNumber(); });
 
 if (micBtn) row.appendChild(micBtn);
 row.appendChild(descInput);
@@ -529,43 +529,8 @@ return parts;
 }
 function clearParts() { partsRowsEl.innerHTML = ""; }
 
-// ---- Note assembly ----
-function buildNote() {
-var job = jobEl.value.trim() || "(job not entered)";
-var tech = techEl.value.trim() || "(name not entered)";
-var notes = notesEl.value.trim() || "(no notes yet)";
-var stamp = formatDateTime(new Date());
-var lines = ["Job: " + job, "Tech: " + tech + " — " + stamp];
-var startStr = startTimeEl.value, finishStr = finishTimeEl.value;
-if (startStr || finishStr) {
-var timeLine = "Time: ";
-if (startStr && finishStr) {
-timeLine += formatTimeStr(startStr) + " – " + formatTimeStr(finishStr);
-var dur = durationText(startStr, finishStr);
-if (dur) timeLine += " (" + dur + ")";
-} else if (startStr) {
-timeLine += "Started " + formatTimeStr(startStr);
-} else {
-timeLine += "Finished " + formatTimeStr(finishStr);
-}
-lines.push(timeLine);
-}
-lines.push("", notes);
-var parts = collectParts();
-if (parts.length) {
-lines.push("", "Parts used:");
-parts.forEach(function (p) { lines.push("- " + p.qty + "x " + p.desc); });
-}
-var clientNote = clientNoteEl.value.trim();
-if (clientNote) {
-lines.push("", "Note for the client:", clientNote);
-}
-return lines.join("\n");
-}
-
-function refreshPreview() {
-var note = buildNote();
-previewEl.value = note;
+// ---- Docket number ----
+function updateDocketNumber() {
 docketNoEl.textContent = docketNumber(new Date());
 }
 
@@ -648,31 +613,6 @@ div.appendChild(clientDiv);
 entryListEl.appendChild(div);
 }
 }
-
-function copyText(text) {
-if (navigator.clipboard && navigator.clipboard.writeText) {
-navigator.clipboard.writeText(text).then(function () {
-showStatus("Copied — now paste it into the job in Tradify.", false);
-}, function () { fallbackCopy(text); });
-} else {
-fallbackCopy(text);
-}
-}
-function fallbackCopy(text) {
-previewEl.focus();
-previewEl.select();
-try {
-var ok = document.execCommand("copy");
-showStatus(ok ? "Copied — now paste it into the job in Tradify." : "Couldn't copy — the text is selected, copy it manually.", !ok);
-} catch (e) {
-showStatus("Couldn't copy — the text is selected above, copy it manually.", true);
-}
-}
-
-copyBtn.addEventListener("click", function () {
-refreshPreview();
-copyText(previewEl.value);
-});
 
 function pinHeaders() {
 var headers = { "content-type": "application/json" };
@@ -764,7 +704,7 @@ selectedJob = j;
 jobEl.value = jobDisplayText(j);
 jobSuggestEl.hidden = true;
 updateJobLockUI();
-refreshPreview();
+updateDocketNumber();
 }
 
 function updateJobLockUI() {
@@ -806,7 +746,7 @@ submitBtn.addEventListener("click", function () {
 var job = jobEl.value.trim();
 var notes = notesEl.value.trim();
 if (!job && !notes) { showStatus("Add a job and some notes first.", true); return; }
-refreshPreview();
+updateDocketNumber();
 var now = new Date();
 var entry = {
 job: job || "(job not entered)",
@@ -817,7 +757,7 @@ parts: collectParts(),
 clientNote: clientNoteEl.value.trim(),
 startTime: startTimeEl.value,
 finishTime: finishTimeEl.value,
-emailTo: emailToEl.value.trim()
+emailTo: OFFICE_EMAIL
 };
 submitBtn.disabled = true;
 showStatus("Submitting…", false, true);
@@ -830,7 +770,7 @@ return res.json().catch(function () { return {}; }).then(function (data) { retur
 }).then(function (result) {
 submitBtn.disabled = false;
 if (!result.ok) {
-showStatus((result.data && result.data.error) || "Couldn't submit that — try again, or copy the note and send it manually.", true);
+showStatus((result.data && result.data.error) || "Couldn't submit that — try again.", true);
 return;
 }
 store.entries.push({
@@ -841,10 +781,10 @@ parts: entry.parts,
 clientNote: entry.clientNote,
 startTime: entry.startTime,
 finishTime: entry.finishTime,
-stamp: formatDateTime(now)
+stamp: formatDateTime(now),
+day: dayKey(now)
 });
 store.tech = techEl.value.trim();
-store.emailTo = emailToEl.value.trim();
 store.pin = appPinEl.value.trim();
 safeSave();
 renderEntries();
@@ -858,27 +798,26 @@ startTimeEl.value = "";
 finishTimeEl.value = "";
 clearParts();
 addPartRow();
-refreshPreview();
+updateDocketNumber();
 updateDurationHint();
 var confirmMsg = "Submitted — logged with the office.";
-if (result.data && result.data.emailed) confirmMsg += " Confirmation emailed to " + entry.emailTo + ".";
+if (result.data && result.data.emailed) confirmMsg += " Confirmation emailed to the office.";
 showStatus(confirmMsg, false);
 jobEl.focus();
 }).catch(function () {
 submitBtn.disabled = false;
-showStatus("Couldn't reach the server — try again, or copy the note and send it manually.", true);
+showStatus("Couldn't reach the server — try again.", true);
 });
 });
 
-addPartBtn.addEventListener("click", function () { addPartRow(); refreshPreview(); });
+addPartBtn.addEventListener("click", function () { addPartRow(); updateDocketNumber(); });
 
-[techEl, jobEl, notesEl, clientNoteEl, emailToEl].forEach(function (el) { el.addEventListener("input", refreshPreview); });
+[techEl, jobEl, notesEl, clientNoteEl].forEach(function (el) { el.addEventListener("input", updateDocketNumber); });
 [startTimeEl, finishTimeEl].forEach(function (el) {
-el.addEventListener("input", function () { updateDurationHint(); refreshPreview(); });
+el.addEventListener("input", function () { updateDurationHint(); updateDocketNumber(); });
 });
-startNowBtn.addEventListener("click", function () { startTimeEl.value = nowTimeString(); updateDurationHint(); refreshPreview(); });
-finishNowBtn.addEventListener("click", function () { finishTimeEl.value = nowTimeString(); updateDurationHint(); refreshPreview(); });
-emailToEl.addEventListener("change", function () { store.emailTo = emailToEl.value.trim(); safeSave(); });
+startNowBtn.addEventListener("click", function () { startTimeEl.value = nowTimeString(); updateDurationHint(); updateDocketNumber(); });
+finishNowBtn.addEventListener("click", function () { finishTimeEl.value = nowTimeString(); updateDurationHint(); updateDocketNumber(); });
 appPinEl.addEventListener("change", function () { store.pin = appPinEl.value.trim(); safeSave(); });
 
 // ---- Voice dictation: record on the phone, transcribe + tidy on the backend ----
@@ -969,7 +908,7 @@ if (!text) { notify("Didn't catch anything — try again closer to the mic.", tr
 var existing = targetEl.value.trim();
 targetEl.value = existing ? existing + " " + text : text;
 if (targetEl === jobEl) afterJobTextSet();
-refreshPreview();
+updateDocketNumber();
 notify("Added.", false);
 }).catch(function () {
 micBtn.disabled = false;
@@ -1011,7 +950,7 @@ gotSomething = true;
 if (!partsRowsEl.children.length) addPartRow();
 if (!gotSomething) { notify("Didn't catch anything — try again closer to the mic.", true); return; }
 updateDurationHint();
-refreshPreview();
+updateDocketNumber();
 notify("Filled in below — check it over.", false);
 showStatus("Filled in from your dictation — check it over before saving.", false);
 }).catch(function () {
@@ -1078,12 +1017,12 @@ navigator.serviceWorker.register("service-worker.js").catch(function () { /* off
 }
 
 safeGet();
+pruneOldEntries();
 if (store.tech) techEl.value = store.tech;
-if (store.emailTo) emailToEl.value = store.emailTo;
 if (store.pin) appPinEl.value = store.pin;
 addPartRow();
 renderEntries();
-refreshPreview();
+updateDocketNumber();
 updateDurationHint();
 })();
 </script>
