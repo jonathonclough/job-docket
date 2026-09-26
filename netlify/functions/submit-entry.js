@@ -116,6 +116,12 @@ const entry = {
 id: id,
 submittedAt: now.toISOString(),
 job: job || "(job not entered)",
+// Set only when the tech picked a job from the dropdown (backed by
+// netlify/functions/job-list.js's cache of Tradify's Active Jobs). When
+// present, this is an exact Tradify job number (e.g. "JB02287") the sync
+// can search for directly with no ambiguity. Left blank for free-typed or
+// dictated-only job text, which the sync still has to match by name.
+jobNumber: ((payload && payload.jobNumber) || "").trim(),
 tech: ((payload && payload.tech) || "").trim(),
 notes: notes || "(no notes)",
 parts: Array.isArray(payload && payload.parts) ? payload.parts : [],
