@@ -169,7 +169,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(field === "full" ? { transcript: "", jobRef: "", startTime: "", finishTime: "", notes: "", parts: [] } : { transcript: "", cleaned: "" })
+      body: JSON.stringify(field === "full" ? { transcript: "", jobRef: "", startTime: "", finishTime: "", notes: "", parts: [], tidied: false } : { transcript: "", cleaned: "", tidied: false })
     };
   }
 
@@ -205,6 +205,10 @@ exports.handler = async (event) => {
       return typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s.trim()) ? s.trim() : "";
     }
     let jobRef = "", startTime = "", finishTime = "", notes = "", parts = [];
+    // True only once Claude has actually returned and its JSON has parsed —
+    // this is what the app uses to confirm the tidy-up step really ran,
+    // rather than silently having fallen back to the raw dictation below.
+    let tidied = false;
     try {
       const raw = await askClaude(FULL_JOB_PROMPT, 700);
       if (raw) {
@@ -219,6 +223,7 @@ exports.handler = async (event) => {
               .filter((p) => p && p.desc)
               .map((p) => ({ desc: String(p.desc).trim(), qty: String(p.qty || "1").trim() }))
           : [];
+        tidied = true;
       }
     } catch (e) {
       console.error("Full-job JSON split failed: " + (e && e.message));
@@ -229,16 +234,20 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ transcript: transcript, jobRef: jobRef, startTime: startTime, finishTime: finishTime, notes: notes, parts: parts })
+      body: JSON.stringify({ transcript: transcript, jobRef: jobRef, startTime: startTime, finishTime: finishTime, notes: notes, parts: parts, tidied: tidied })
     };
   }
 
   // 2b. A single field — tidy it up, fixing likely mis-heard jargon, keeping every fact.
   const instruction = CLEANUP_PROMPTS[field] || CLEANUP_PROMPTS.notes;
   let cleaned = transcript;
+  // True only once Claude has actually returned a cleaned-up version — lets
+  // the app confirm the tidy-up step really ran, rather than silently having
+  // fallen back to the raw dictation.
+  let tidied = false;
   try {
     const result = await askClaude(instruction, 400);
-    if (result) cleaned = result;
+    if (result) { cleaned = result; tidied = true; }
     // If this call fails for any reason, the raw transcript still goes back
     // below rather than losing the dictation entirely.
   } catch (e) {
@@ -249,6 +258,6 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ transcript: transcript, cleaned: cleaned })
+    body: JSON.stringify({ transcript: transcript, cleaned: cleaned, tidied: tidied })
   };
 };
