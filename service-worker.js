@@ -1,6 +1,6 @@
 // Job Docket — offline app shell cache.
 // Bump CACHE when you ship changes to index.html/manifest/icons so phones pick up the update.
-const CACHE = "job-docket-v7";
+const CACHE = "job-docket-v8";
 const ASSETS = [
   "./",
   "./index.html",
