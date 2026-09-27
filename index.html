@@ -909,7 +909,8 @@ var existing = targetEl.value.trim();
 targetEl.value = existing ? existing + " " + text : text;
 if (targetEl === jobEl) afterJobTextSet();
 updateDocketNumber();
-notify("Added.", false);
+var tidied = !!(result.data && result.data.tidied);
+notify(tidied ? "Tidied up by Claude." : "Added as spoken — Claude cleanup unavailable, check the wording.", !tidied);
 }).catch(function () {
 micBtn.disabled = false;
 micBtn.classList.remove("mic-busy");
@@ -951,8 +952,9 @@ if (!partsRowsEl.children.length) addPartRow();
 if (!gotSomething) { notify("Didn't catch anything — try again closer to the mic.", true); return; }
 updateDurationHint();
 updateDocketNumber();
-notify("Filled in below — check it over.", false);
-showStatus("Filled in from your dictation — check it over before saving.", false);
+var tidied = !!data.tidied;
+notify(tidied ? "Tidied up by Claude — check it over." : "Filled in as spoken — Claude cleanup unavailable, check the wording.", !tidied);
+showStatus(tidied ? "Tidied up by Claude — check it over before saving." : "Filled in from your dictation — Claude cleanup unavailable, check the wording closely.", !tidied);
 }).catch(function () {
 micBtn.disabled = false;
 micBtn.classList.remove("mic-busy");
