@@ -251,6 +251,7 @@ box-shadow: 0 8px 20px rgba(11, 36, 54, 0.18);
 .job-suggest-ref { font-size: 0.78rem; color: var(--ink-soft); margin-top: 1px; }
 .job-suggest-empty { padding: 10px 12px; font-size: 0.82rem; color: var(--ink-soft); }
 input#jobRef.job-linked { border-color: var(--ok); }
+input#jobRef.job-unmatched { border-color: var(--danger); }
 
 .empty-note { font-size: 0.85rem; color: var(--ink-soft); padding: 10px 2px; }
 .foot-note { font-size: 0.76rem; color: var(--ink-soft); line-height: 1.5; padding-inline: 2px; margin: 0; }
@@ -748,9 +749,69 @@ function jobDisplayText(j) {
 return j.jobNumber + " — " + j.customer + (j.reference ? " — " + j.reference : "");
 }
 
+// Plain Levenshtein edit distance — no library, just for scoring how close
+// two words are (e.g. a dictated "cutless" against Tradify's "Cutlass").
+function levenshtein(a, b) {
+a = a || ""; b = b || "";
+var m = a.length, n = b.length;
+if (!m) return n;
+if (!n) return m;
+var prev = new Array(n + 1), curr = new Array(n + 1);
+for (var j = 0; j <= n; j++) prev[j] = j;
+for (var i = 1; i <= m; i++) {
+curr[0] = i;
+for (var j2 = 1; j2 <= n; j2++) {
+var cost = a.charAt(i - 1) === b.charAt(j2 - 1) ? 0 : 1;
+curr[j2] = Math.min(prev[j2] + 1, curr[j2 - 1] + 1, prev[j2 - 1] + cost);
+}
+var tmp = prev; prev = curr; curr = tmp;
+}
+return prev[n];
+}
+
+function wordsOf(s) {
+return (s || "").toLowerCase().split(/[^a-z0-9]+/).filter(function (w) { return w.length > 1; });
+}
+
+// How well one query word matches one job word: 1 for an exact hit, a bit
+// less for a plain substring either way, and a shrinking score for a near
+// miss (typo, mis-transcription) based on edit distance — zero once they're
+// too different to be the same word.
+function wordScore(q, w) {
+if (!q || !w) return 0;
+if (q === w) return 1;
+if (w.indexOf(q) !== -1 || q.indexOf(w) !== -1) return 0.85;
+var dist = levenshtein(q, w);
+var sim = 1 - dist / Math.max(q.length, w.length);
+return sim > 0.55 ? sim * 0.7 : 0;
+}
+
+// Best-effort closeness of a typed/dictated query to one Tradify job, used
+// only once nothing contains the text outright (see matchJobs below).
+function fuzzyScore(query, job) {
+var qWords = wordsOf(query);
+if (!qWords.length) return 0;
+var jWords = wordsOf(job.jobNumber).concat(wordsOf(job.customer), wordsOf(job.reference));
+if (!jWords.length) return 0;
+var total = 0;
+qWords.forEach(function (qw) {
+var best = 0;
+jWords.forEach(function (jw) {
+var s = wordScore(qw, jw);
+if (s > best) best = s;
+});
+total += best;
+});
+return total / qWords.length;
+}
+
+// Returns {jobs, strong}. strong: true means these actually contain the
+// typed/dictated text; strong: false means nothing did, so these are just
+// the closest guesses by fuzzy word matching — always something to tap
+// rather than a dead end, since Submit requires an actual pick from here.
 function matchJobs(query) {
 var q = query.trim().toLowerCase();
-if (!q) return [];
+if (!q) return { jobs: [], strong: true };
 var starts = [], contains = [];
 for (var i = 0; i < jobList.length; i++) {
 var j = jobList[i];
@@ -760,14 +821,27 @@ var refHay = (j.reference || "").toLowerCase();
 if (numHay.indexOf(q) === 0 || custHay.indexOf(q) === 0) starts.push(j);
 else if (numHay.indexOf(q) !== -1 || custHay.indexOf(q) !== -1 || refHay.indexOf(q) !== -1) contains.push(j);
 }
-return starts.concat(contains).slice(0, 8);
+var strong = starts.concat(contains);
+if (strong.length) return { jobs: strong.slice(0, 8), strong: true };
+
+var scored = jobList.map(function (j) { return { job: j, score: fuzzyScore(q, j) }; })
+.filter(function (s) { return s.score > 0; })
+.sort(function (a, b) { return b.score - a.score; });
+return { jobs: scored.slice(0, 6).map(function (s) { return s.job; }), strong: false };
 }
 
-function renderJobSuggestions(matches) {
+function renderJobSuggestions(result) {
+var matches = (result && result.jobs) || [];
 jobSuggestEl.innerHTML = "";
 if (!matches.length) {
 jobSuggestEl.hidden = true;
 return;
+}
+if (result && result.strong === false) {
+var header = document.createElement("div");
+header.className = "job-suggest-empty";
+header.textContent = "No exact match — closest jobs, pick one or keep typing:";
+jobSuggestEl.appendChild(header);
 }
 matches.forEach(function (j) {
 var item = document.createElement("div");
@@ -791,14 +865,22 @@ updateDocketNumber();
 
 function updateJobLockUI() {
 if (selectedJob && jobEl.value === jobDisplayText(selectedJob)) {
+jobEl.classList.remove("job-unmatched");
 jobEl.classList.add("job-linked");
 jobHintEl.style.color = "var(--ok)";
 jobHintEl.textContent = "Linked to Tradify job " + selectedJob.jobNumber + " — editing the text unlinks it";
 } else {
 selectedJob = null;
 jobEl.classList.remove("job-linked");
+if (jobEl.value.trim()) {
+jobEl.classList.add("job-unmatched");
+jobHintEl.style.color = "var(--danger)";
+jobHintEl.textContent = "Not picked yet — tap a job below to link it";
+} else {
+jobEl.classList.remove("job-unmatched");
 jobHintEl.style.color = "";
 jobHintEl.textContent = jobHintDefaultText;
+}
 }
 }
 
@@ -815,7 +897,7 @@ renderJobSuggestions(matchJobs(jobEl.value));
 });
 jobEl.addEventListener("focus", function () {
 if (jobEl.value.trim()) renderJobSuggestions(matchJobs(jobEl.value));
-else if (jobList.length) renderJobSuggestions(jobList.slice(0, 8));
+else if (jobList.length) renderJobSuggestions({ jobs: jobList.slice(0, 8), strong: true });
 });
 jobEl.addEventListener("blur", function () {
 window.setTimeout(function () { jobSuggestEl.hidden = true; }, 150);
