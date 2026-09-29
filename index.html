@@ -215,9 +215,27 @@ button:focus-visible, .btn-link:focus-visible { outline: 2px solid var(--focus);
 
 .entry-list { display: flex; flex-direction: column; gap: 8px; }
 .entry { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--paper-raised); }
+.entry.entry-removing { opacity: 0.45; pointer-events: none; }
 .entry-top { display: flex; justify-content: space-between; gap: 8px; font-size: 0.78rem; color: var(--ink-soft); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
 .entry-job { font-weight: 700; color: var(--ink); }
 .entry-text { font-size: 0.88rem; line-height: 1.4; white-space: pre-wrap; }
+.entry-foot { display: flex; justify-content: flex-end; margin-top: 6px; }
+.entry-delete-btn {
+  background: transparent; color: var(--danger); border: 1.5px solid var(--line);
+  padding: 5px 10px; font-size: 0.76rem; border-radius: 7px; cursor: pointer;
+  font-family: "Archivo", sans-serif; font-weight: 700;
+}
+.entry-confirm-row { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--danger); }
+.entry-confirm-yes {
+  background: var(--danger); color: var(--accent-ink); border: none;
+  padding: 5px 10px; font-size: 0.76rem; border-radius: 7px; cursor: pointer;
+  font-family: "Archivo", sans-serif; font-weight: 700;
+}
+.entry-confirm-no {
+  background: transparent; color: var(--ink-soft); border: 1.5px solid var(--line);
+  padding: 5px 10px; font-size: 0.76rem; border-radius: 7px; cursor: pointer;
+  font-family: "Archivo", sans-serif; font-weight: 700;
+}
 
 .job-suggest {
 position: absolute; top: calc(100% + 4px); left: 0; right: 0;
@@ -275,12 +293,12 @@ input#jobRef.job-linked { border-color: var(--ok); }
 </div>
 
 <div class="field">
-<label for="jobRef">Job / vessel</label>
+<label for="jobRef">Job</label>
 <div class="dictate-field dictate-field--input" id="jobWrap">
-<input type="text" id="jobRef" placeholder="e.g. Tradify #4521 — Southern Cross" autocomplete="off">
+<input type="text" id="jobRef" placeholder="Type or dictate to search, then tap the job" autocomplete="off">
 <div class="job-suggest" id="jobSuggest" hidden></div>
 </div>
-<div class="hint" id="jobHint">Tap the mic to dictate, or tap the field to find it in Tradify</div>
+<div class="hint" id="jobHint">Type or dictate to search Tradify's job list, then tap the one you mean — you can't submit without picking one</div>
 </div>
 
 <div class="field">
@@ -349,7 +367,7 @@ input#jobRef.job-linked { border-color: var(--ok); }
 <a href="submissions.html" style="display:inline-block; margin-top:10px; font-family:'Archivo',sans-serif; font-weight:700; font-size:0.78rem; letter-spacing:0.02em; color:var(--accent); text-decoration:none;">View full submission log &rarr;</a>
 </div>
 
-<p class="foot-note">Hitting Submit logs the job with the office, emails a confirmation, and queues it to be entered into Tradify. Picking the job from the dropdown under "Job / vessel" (instead of just typing or dictating it) makes that match exact — worth doing whenever you can. Typing works offline; the mic, the job picker and Submit all need a connection, since they call out to the transcription, tidy-up, storage and email services — with no signal, keep what you've typed and hit Submit once you're back in range.</p>
+<p class="foot-note">Hitting Submit logs the job with the office, emails a confirmation, and queues it to be entered into Tradify. The "Job" field only accepts a job you've actually picked from the list under it — type or dictate a bit of the job, customer or vessel name to search, then tap the match, so it always lines up exactly with Tradify. That list is cached on the phone after it first loads, so picking still works with no signal — only the mic, searching a job you've never loaded before, and Submit itself need a connection.</p>
 
 </div>
 
@@ -563,6 +581,7 @@ for (var i = entries.length - 1; i >= 0; i--) {
 var e = entries[i];
 var div = document.createElement("div");
 div.className = "entry";
+div.dataset.index = String(i);
 var top = document.createElement("div");
 top.className = "entry-top";
 var jobSpan = document.createElement("span");
@@ -610,9 +629,72 @@ clientDiv.style.color = "var(--ink-soft)";
 clientDiv.textContent = "For client: " + e.clientNote;
 div.appendChild(clientDiv);
 }
+// Entries saved before this feature existed have no id (the server
+// wasn't asked to return one) — nothing to delete by, so skip the
+// button rather than show one that can't work.
+if (e.id) {
+var foot = document.createElement("div");
+foot.className = "entry-foot";
+foot.innerHTML = '<button type="button" class="entry-delete-btn" data-act="delete">Delete</button>';
+div.appendChild(foot);
+}
 entryListEl.appendChild(div);
 }
 }
+
+// Deleting a docket removes it from the server for good, so a tap on
+// "Delete" doesn't delete anything yet — it swaps that entry's footer for
+// an explicit Yes/Cancel row, and only the Yes click calls the API. One
+// delegated listener handles every entry, since the list is rebuilt
+// wholesale by renderEntries().
+entryListEl.addEventListener("click", function (ev) {
+var btn = ev.target.closest("button[data-act]");
+if (!btn) return;
+var entryDiv = btn.closest(".entry");
+if (!entryDiv) return;
+var idx = parseInt(entryDiv.dataset.index, 10);
+var e = store.entries[idx];
+if (!e) return;
+var foot = entryDiv.querySelector(".entry-foot");
+var act = btn.dataset.act;
+
+if (act === "delete") {
+foot.innerHTML =
+'<span class="entry-confirm-row">Delete this docket?' +
+'<button type="button" class="entry-confirm-yes" data-act="confirm-delete">Yes, delete</button>' +
+'<button type="button" class="entry-confirm-no" data-act="cancel-delete">Cancel</button></span>';
+return;
+}
+if (act === "cancel-delete") {
+foot.innerHTML = '<button type="button" class="entry-delete-btn" data-act="delete">Delete</button>';
+return;
+}
+if (act === "confirm-delete") {
+entryDiv.classList.add("entry-removing");
+foot.innerHTML = '<span class="entry-confirm-row">Deleting…</span>';
+fetch("/api/submit-entry?id=" + encodeURIComponent(e.id), { method: "DELETE", headers: pinHeaders() })
+.then(function (res) {
+return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+})
+.then(function (result) {
+if (!result.ok) {
+entryDiv.classList.remove("entry-removing");
+foot.innerHTML = '<button type="button" class="entry-delete-btn" data-act="delete">Delete</button>';
+showStatus((result.data && result.data.error) || "Couldn't delete that — try again.", true);
+return;
+}
+store.entries.splice(idx, 1);
+safeSave();
+renderEntries();
+showStatus("Deleted.", false);
+})
+.catch(function () {
+entryDiv.classList.remove("entry-removing");
+foot.innerHTML = '<button type="button" class="entry-delete-btn" data-act="delete">Delete</button>';
+showStatus("Couldn't reach the server.", true);
+});
+}
+});
 
 function pinHeaders() {
 var headers = { "content-type": "application/json" };
@@ -745,12 +827,22 @@ if (ev.key === "Escape") jobSuggestEl.hidden = true;
 submitBtn.addEventListener("click", function () {
 var job = jobEl.value.trim();
 var notes = notesEl.value.trim();
-if (!job && !notes) { showStatus("Add a job and some notes first.", true); return; }
+if (!notes) { showStatus("Add what you did first.", true); return; }
+// The job field only ever holds free text until a suggestion is tapped
+// (selectJob sets selectedJob and writes its exact display text into the
+// field); editing the text after that clears selectedJob again via
+// updateJobLockUI. So this is the one check needed to guarantee every
+// submission carries a real Tradify job number — no free-typed-only job
+// text can reach the server.
+if (!job || !selectedJob || jobEl.value !== jobDisplayText(selectedJob)) {
+showStatus("Pick a job from the list first — type or dictate to search, then tap the match.", true);
+return;
+}
 updateDocketNumber();
 var now = new Date();
 var entry = {
-job: job || "(job not entered)",
-jobNumber: (selectedJob && jobEl.value === jobDisplayText(selectedJob)) ? selectedJob.jobNumber : "",
+job: job,
+jobNumber: selectedJob.jobNumber,
 tech: techEl.value.trim(),
 notes: notes || "(no notes)",
 parts: collectParts(),
@@ -774,6 +866,7 @@ showStatus((result.data && result.data.error) || "Couldn't submit that — try a
 return;
 }
 store.entries.push({
+id: result.data && result.data.id,
 job: entry.job,
 tech: entry.tech,
 notes: entry.notes,
