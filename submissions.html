@@ -67,12 +67,39 @@ button:disabled { opacity: 0.6; cursor: default; }
   color: var(--accent);
 }
 .empty { color: var(--ink-soft); padding: 20px 0; }
+.entry-actions { display: flex; align-items: center; gap: 8px; align-self: center; margin-left: auto; }
+.btn-delete {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  background: transparent;
+  color: #a3271e;
+  border: 1px solid rgba(163, 39, 30, 0.4);
+}
+.btn-delete:hover { background: rgba(163, 39, 30, 0.08); }
+.confirm-row { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.confirm-row span { color: #a3271e; }
+.btn-confirm-yes {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  background: #a3271e;
+}
+.btn-confirm-no {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+.entry.removing { opacity: 0.4; pointer-events: none; }
 </style>
 </head>
 <body>
 
 <h1>Job Docket — Submissions</h1>
-<p class="sub">Jobs submitted by the field techs. Enter the app PIN below to view.</p>
+<p class="sub">Jobs submitted by the field techs. Enter the app PIN below to view — or to delete a submission (this removes it from Job Docket only; it does not touch anything already entered in Tradify).</p>
 
 <div class="pin-row">
 <input type="password" id="pinInput" placeholder="App PIN" autocomplete="off" inputmode="numeric">
@@ -108,6 +135,10 @@ function escapeHtml(s) {
   });
 }
 
+function actionsHtml() {
+  return '<div class="entry-actions"><button type="button" class="btn-delete" data-act="delete">Delete</button></div>';
+}
+
 function renderEntries(list) {
   entriesEl.innerHTML = "";
   if (!list.length) {
@@ -117,6 +148,7 @@ function renderEntries(list) {
   list.forEach(function (e) {
     var div = document.createElement("div");
     div.className = "entry";
+    div.dataset.id = e.id || "";
     var when = "";
     try { when = new Date(e.submittedAt).toLocaleString("en-AU"); } catch (err) { when = e.submittedAt || ""; }
     var partsText = (e.parts || []).map(function (p) {
@@ -126,7 +158,9 @@ function renderEntries(list) {
     div.innerHTML =
       '<div class="entry-head"><strong>' + escapeHtml(e.job) + '</strong>' +
       '<span class="badge">' + escapeHtml(status) + '</span>' +
-      '<time>' + escapeHtml(when) + '</time></div>' +
+      '<time>' + escapeHtml(when) + '</time>' +
+      actionsHtml() +
+      '</div>' +
       '<dl>' +
       (e.tech ? '<dt>Tech</dt><dd>' + escapeHtml(e.tech) + '</dd>' : '') +
       ((e.startTime || e.finishTime) ? '<dt>Time</dt><dd>' + escapeHtml(e.startTime || "?") + ' – ' + escapeHtml(e.finishTime || "?") + '</dd>' : '') +
@@ -138,6 +172,65 @@ function renderEntries(list) {
     entriesEl.appendChild(div);
   });
 }
+
+// Deleting is permanent — Job Docket has no undo and no trash. So a click
+// on "Delete" doesn't delete anything yet; it swaps that entry's actions
+// area for an explicit Yes/Cancel row, and only the Yes click calls the
+// API. Handled with one delegated listener rather than per-button
+// listeners, since the list re-renders wholesale on every load.
+entriesEl.addEventListener("click", function (ev) {
+  var btn = ev.target.closest("button[data-act]");
+  if (!btn) return;
+  var entryDiv = btn.closest(".entry");
+  if (!entryDiv) return;
+  var actionsDiv = entryDiv.querySelector(".entry-actions");
+  var act = btn.dataset.act;
+
+  if (act === "delete") {
+    actionsDiv.innerHTML =
+      '<span class="confirm-row"><span>Delete this for good?</span>' +
+      '<button type="button" class="btn-confirm-yes" data-act="confirm-delete">Yes, delete</button>' +
+      '<button type="button" class="btn-confirm-no" data-act="cancel-delete">Cancel</button></span>';
+    return;
+  }
+
+  if (act === "cancel-delete") {
+    actionsDiv.innerHTML = actionsHtml();
+    return;
+  }
+
+  if (act === "confirm-delete") {
+    var id = entryDiv.dataset.id;
+    if (!id) return;
+    entryDiv.classList.add("removing");
+    actionsDiv.innerHTML = '<span class="confirm-row"><span>Deleting…</span></span>';
+    var headers = {};
+    var pin = pinInput.value.trim();
+    if (pin) headers["x-app-secret"] = pin;
+    fetch("/api/submit-entry?id=" + encodeURIComponent(id), { method: "DELETE", headers: headers })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          entryDiv.classList.remove("removing");
+          actionsDiv.innerHTML = actionsHtml();
+          showStatus((result.data && result.data.error) || "Couldn't delete that.", true);
+          return;
+        }
+        entryDiv.remove();
+        if (!entriesEl.children.length) {
+          entriesEl.innerHTML = '<div class="empty">No submissions yet.</div>';
+        }
+        showStatus("Deleted.", false);
+      })
+      .catch(function () {
+        entryDiv.classList.remove("removing");
+        actionsDiv.innerHTML = actionsHtml();
+        showStatus("Couldn't reach the server.", true);
+      });
+  }
+});
 
 function load() {
   var pin = pinInput.value.trim();
