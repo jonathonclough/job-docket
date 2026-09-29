@@ -13,6 +13,12 @@
 // PATCH /api/submit-entry?id=<id> -> update a submission's Tradify status
 // (used by the Tradify sync once it's tried to enter the job — see
 // tradify.status: "pending" | "entered" | "needs_attention" | "failed").
+// DELETE /api/submit-entry?id=<id> -> permanently remove a submission
+// (needs the app PIN, same as GET). Used by submissions.html's delete
+// button — this does not touch Tradify at all, it only removes Job
+// Docket's own record. The Tradify sync itself never calls this; it is
+// not allowed to delete records, only a person reviewing submissions.html
+// can.
 //
 // Requires (Netlify -> Site configuration -> Environment variables):
 // RESEND_API_KEY — from resend.com (same as send-note.js)
@@ -93,6 +99,32 @@ return {
 statusCode: 200,
 headers: { "content-type": "application/json" },
 body: JSON.stringify({ ok: true, id: id, tradify: existing.tradify })
+};
+}
+
+if (event.httpMethod === "DELETE") {
+const id = event.queryStringParameters && event.queryStringParameters.id;
+if (!id) {
+return { statusCode: 400, body: JSON.stringify({ error: "Missing id." }) };
+}
+let existing;
+try {
+existing = await store.get(id, { type: "json" });
+} catch (e) {
+return { statusCode: 500, body: JSON.stringify({ error: "Couldn't read that submission." }) };
+}
+if (!existing) {
+return { statusCode: 404, body: JSON.stringify({ error: "No submission with that id." }) };
+}
+try {
+await store.delete(id);
+} catch (e) {
+return { statusCode: 500, body: JSON.stringify({ error: "Couldn't delete that." }) };
+}
+return {
+statusCode: 200,
+headers: { "content-type": "application/json" },
+body: JSON.stringify({ ok: true, id: id })
 };
 }
 
