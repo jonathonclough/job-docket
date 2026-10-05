@@ -233,6 +233,8 @@ box-shadow: 0 8px 20px rgba(11, 36, 54, 0.18);
 .job-suggest-ref { font-size: 0.78rem; color: var(--ink-soft); margin-top: 1px; }
 .job-suggest-empty { padding: 10px 12px; font-size: 0.82rem; color: var(--ink-soft); }
 input#jobRef.job-linked { border-color: var(--ok); }
+input#jobRef.job-unlinked { border-color: var(--danger); }
+.job-suggest-empty strong { color: var(--danger); }
 .job-suggest-item.is-workshop .job-suggest-num { color: var(--ok); }
 .workshop-btn { align-self: flex-start; background: transparent; color: var(--ok); border: 1.5px solid var(--line); padding: 9px 14px; font-size: 0.82rem; }
 .workshop-btn.is-on { background: var(--ok); color: var(--accent-ink); border-color: var(--ok); }
@@ -283,7 +285,7 @@ input#jobRef.job-linked { border-color: var(--ok); }
 <input type="text" id="jobRef" placeholder="e.g. Tradify #4521 — Southern Cross" autocomplete="off">
 <div class="job-suggest" id="jobSuggest" hidden></div>
 </div>
-<div class="hint" id="jobHint">Tap the mic to dictate, or tap the field to find it in Tradify</div>
+<div class="hint" id="jobHint">Tap the mic and say the job, or tap the field — then pick it from the list</div>
 <button type="button" class="workshop-btn" id="workshopBtn" aria-pressed="false">Workshop — non-billable</button>
 </div>
 
@@ -353,7 +355,7 @@ input#jobRef.job-linked { border-color: var(--ok); }
 <a href='/submissions' style='display:inline-block; margin-top:10px; font-family:\'Archivo\',sans-serif; font-weight:700; font-size:0.78rem; letter-spacing:0.02em; color:var(--accent); text-decoration:none;'>View full submission log &rarr;</a>
 </div>
 
-<p class="foot-note">Hitting Submit logs the job with the office, emails a confirmation, and queues it to be entered into Tradify. Picking the job from the dropdown under "Job / vessel" (instead of just typing or dictating it) makes that match exact — worth doing whenever you can. Time not on a customer job? Tap "Workshop — non-billable" (or just say "workshop") and it goes into Tradify's timesheets as non-billable hours. Typing works offline; the mic, the job picker and Submit all need a connection, since they call out to the transcription, tidy-up, storage and email services — with no signal, keep what you've typed and hit Submit once you're back in range.</p>
+<p class="foot-note">Hitting Submit logs the job with the office, emails a confirmation, and queues it to be entered into Tradify. Every job has to be picked from the list under "Job / vessel" before it can be submitted — say or type the job and tap the right one. If a brand-new job isn't in the list yet, it'll show up within the hour once it's in Tradify. Time not on a customer job? Tap "Workshop — non-billable" (or just say "workshop") and it goes into Tradify's timesheets as non-billable hours. Typing works offline; the mic, the job picker and Submit all need a connection, since they call out to the transcription, tidy-up, storage and email services — with no signal, keep what you've typed and hit Submit once you're back in range.</p>
 
 </div>
 
@@ -701,14 +703,51 @@ var refHay = (j.reference || "").toLowerCase();
 if (numHay.indexOf(q) === 0 || custHay.indexOf(q) === 0) starts.push(j);
 else if (numHay.indexOf(q) !== -1 || custHay.indexOf(q) !== -1 || refHay.indexOf(q) !== -1) contains.push(j);
 }
-return starts.concat(contains).slice(0, 8);
+var results = starts.concat(contains);
+// Dictated names rarely match a Tradify name exactly ("the Southern Cross
+// boat", "job 2287"), so also score jobs by how many of the spoken words
+// (or the job number digits) they contain.
+if (results.length < 8) {
+var STOP = { the: 1, and: 1, for: 1, job: 1, jobs: 1, boat: 1, vessel: 1, yacht: 1, number: 1, on: 1, at: 1, in: 1, a: 1, an: 1, of: 1, mv: 1, sv: 1, my: 1 };
+var tokens = q.split(/[^a-z0-9]+/).filter(function (t) {
+return t && !STOP[t] && (t.length >= 3 || /^\d+$/.test(t));
+});
+if (tokens.length) {
+var scored = [];
+for (var k = 0; k < jobList.length; k++) {
+var jj = jobList[k];
+if (results.indexOf(jj) !== -1) continue;
+var hay = ((jj.jobNumber || "") + " " + (jj.customer || "") + " " + (jj.reference || "")).toLowerCase();
+var digits = (jj.jobNumber || "").replace(/\D/g, "").replace(/^0+/, "");
+var score = 0;
+tokens.forEach(function (t) {
+if (/^\d+$/.test(t)) { if (digits && digits === t.replace(/^0+/, "")) score += 3; else if (hay.indexOf(t) !== -1) score += 1; }
+else if (hay.indexOf(t) !== -1) score += 1;
+});
+if (score > 0) scored.push({ j: jj, s: score });
+}
+scored.sort(function (a, b) { return b.s - a.s; });
+scored.forEach(function (x) { results.push(x.j); });
+}
+}
+return results.slice(0, 8);
 }
 
-function renderJobSuggestions(matches) {
+function renderJobSuggestions(matches, query) {
 jobSuggestEl.innerHTML = "";
-if (!matches.length) {
+var q = (query || "").trim();
+if (!matches.length && !q) {
 jobSuggestEl.hidden = true;
 return;
+}
+if (!matches.length) {
+var empty = document.createElement("div");
+empty.className = "job-suggest-empty";
+empty.innerHTML = jobList.length
+? "<strong>No Tradify job matches “" + escapeHtml(q) + "”.</strong> Try the customer name or job number — or pick Workshop if it's not a customer job."
+: "<strong>The job list hasn't loaded on this phone yet.</strong> Get a signal and reopen the app, or pick Workshop if it's not a customer job.";
+jobSuggestEl.appendChild(empty);
+matches = [WORKSHOP_JOB];
 }
 matches.forEach(function (j) {
 var item = document.createElement("div");
@@ -742,9 +781,17 @@ jobHintEl.textContent = "Linked to Tradify job " + selectedJob.jobNumber + " —
 } else {
 selectedJob = null;
 jobEl.classList.remove("job-linked");
+if (jobEl.value.trim()) {
+jobEl.classList.add("job-unlinked");
+jobHintEl.style.color = "var(--danger)";
+jobHintEl.textContent = "Not linked to a job yet — tap the right job in the list (or Workshop) before you can submit";
+} else {
+jobEl.classList.remove("job-unlinked");
 jobHintEl.style.color = "";
 jobHintEl.textContent = jobHintDefaultText;
 }
+}
+if (selectedJob) jobEl.classList.remove("job-unlinked");
 var on = isWorkshopJob(selectedJob);
 workshopBtn.classList.toggle("is-on", on);
 workshopBtn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -756,17 +803,36 @@ workshopBtn.textContent = on ? "✓ Workshop — non-billable" : "Workshop — n
 // said "workshop", link it straight to workshop time.
 function afterJobTextSet() {
 if (isWorkshopText(jobEl.value)) { selectJob(WORKSHOP_JOB); return; }
+openJobPicker();
+}
+
+// Shows the job list for whatever is in the field (or the full list when it's
+// empty) and scrolls it into view — used after dictation and when Submit is
+// blocked, so the tech can tap the right job.
+function openJobPicker() {
 updateJobLockUI();
-renderJobSuggestions(matchJobs(jobEl.value));
+var q = jobEl.value.trim();
+if (q) renderJobSuggestions(matchJobs(q), q);
+else renderJobSuggestions([WORKSHOP_JOB].concat(jobList.slice(0, 7)));
+try { document.getElementById("jobWrap").scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { /* ignore */ }
+}
+
+function isJobLinked() {
+return !!(selectedJob && jobEl.value === jobDisplayText(selectedJob));
 }
 
 jobEl.addEventListener("input", function () {
 updateJobLockUI();
-renderJobSuggestions(matchJobs(jobEl.value));
+renderJobSuggestions(matchJobs(jobEl.value), jobEl.value);
 });
 jobEl.addEventListener("focus", function () {
-if (jobEl.value.trim()) renderJobSuggestions(matchJobs(jobEl.value));
+if (jobEl.value.trim()) renderJobSuggestions(matchJobs(jobEl.value), jobEl.value);
 else renderJobSuggestions([WORKSHOP_JOB].concat(jobList.slice(0, 7)));
+});
+// The list can be opened by dictation without the field having focus, so
+// close it on a tap anywhere outside the job field.
+document.addEventListener("mousedown", function (ev) {
+if (!jobSuggestEl.hidden && !document.getElementById("jobWrap").contains(ev.target)) jobSuggestEl.hidden = true;
 });
 workshopBtn.addEventListener("click", function () {
 if (isWorkshopJob(selectedJob)) {
@@ -787,9 +853,17 @@ if (ev.key === "Escape") jobSuggestEl.hidden = true;
 submitBtn.addEventListener("click", function () {
 var job = jobEl.value.trim();
 var notes = notesEl.value.trim();
-if (!job && !notes) { showStatus("Add a job and some notes first.", true); return; }
 // A typed "workshop" that wasn't tapped/linked still counts as workshop time.
 if (!selectedJob && isWorkshopText(job)) selectJob(WORKSHOP_JOB);
+// Every submission must be linked to a real Tradify job picked from the list,
+// or be workshop time — no free-text jobs.
+if (!isJobLinked()) {
+showStatus(job
+? "Pick the job from the list first — \"" + job + "\" isn't linked to a Tradify job yet."
+: "Pick the job from the list first (or tap Workshop).", true, true);
+openJobPicker();
+return;
+}
 var isWorkshop = isWorkshopJob(selectedJob) && jobEl.value === WORKSHOP_DISPLAY;
 if (isWorkshop && (!startTimeEl.value || !finishTimeEl.value)) {
 showStatus("Workshop time needs a start and finish time.", true);
@@ -798,8 +872,8 @@ return;
 updateDocketNumber();
 var now = new Date();
 var entry = {
-job: isWorkshop ? WORKSHOP_DISPLAY : (job || "(job not entered)"),
-jobNumber: (selectedJob && jobEl.value === jobDisplayText(selectedJob)) ? selectedJob.jobNumber : "",
+job: isWorkshop ? WORKSHOP_DISPLAY : jobDisplayText(selectedJob),
+jobNumber: selectedJob.jobNumber,
 workshop: isWorkshop,
 tech: techEl.value.trim(),
 notes: notes || "(no notes)",
@@ -1005,6 +1079,10 @@ updateDocketNumber();
 var tidied = !!data.tidied;
 notify(tidied ? "Tidied up by Claude — check it over." : "Filled in as spoken — Claude cleanup unavailable, check the wording.", !tidied);
 showStatus(tidied ? "Tidied up by Claude — check it over before saving." : "Filled in from your dictation — Claude cleanup unavailable, check the wording closely.", !tidied);
+if (!isJobLinked()) {
+showStatus("Now tap the right job in the list under Job / vessel — it has to be picked before you can submit.", true, true);
+openJobPicker();
+}
 }).catch(function () {
 micBtn.disabled = false;
 micBtn.classList.remove("mic-busy");
