@@ -1,6 +1,6 @@
 // Job Docket — offline app shell cache.
 // Bump CACHE when you ship changes to index.html/manifest/icons so phones pick up the update.
-const CACHE = "job-docket-v8";
+const CACHE = "job-docket-v9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -31,6 +31,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
+
+  // Live data (job list, submissions) must always come from the network, never the cache.
+  if (new URL(req.url).pathname.startsWith("/api/")) return;
 
   // Page navigations: try the network first, fall back to the cached shell offline.
   if (req.mode === "navigate") {
