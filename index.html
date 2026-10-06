@@ -658,8 +658,11 @@ if (parsed && Array.isArray(parsed.jobs)) jobList = parsed.jobs;
 function saveJobListCache(updatedAt) {
 try { localStorage.setItem(JOB_LIST_CACHE_KEY, JSON.stringify({ updatedAt: updatedAt, jobs: jobList })); } catch (e) { /* ignore */ }
 }
+var lastJobListFetch = 0;
 function refreshJobList() {
-fetch("/api/job-list", { headers: pinHeaders() }).then(function (res) {
+lastJobListFetch = Date.now();
+// Cache-busted and no-store so phones always get the latest list from the office PC sync.
+fetch("/api/job-list?t=" + Date.now(), { headers: pinHeaders(), cache: "no-store" }).then(function (res) {
 return res.json();
 }).then(function (data) {
 if (data && Array.isArray(data.jobs) && data.jobs.length) {
@@ -826,6 +829,7 @@ updateJobLockUI();
 renderJobSuggestions(matchJobs(jobEl.value), jobEl.value);
 });
 jobEl.addEventListener("focus", function () {
+if (Date.now() - lastJobListFetch > 5 * 60 * 1000) refreshJobList();
 if (jobEl.value.trim()) renderJobSuggestions(matchJobs(jobEl.value), jobEl.value);
 else renderJobSuggestions([WORKSHOP_JOB].concat(jobList.slice(0, 7)));
 });
@@ -1111,6 +1115,11 @@ setupFieldDictation(document.getElementById("clientNoteWrap"), clientNoteEl, cli
 jobHintDefaultText = jobHintEl.textContent;
 loadJobListCache();
 refreshJobList();
+// An installed app can sit open in the background for days — refresh the job list
+// whenever it's brought back to the front.
+document.addEventListener("visibilitychange", function () {
+if (document.visibilityState === "visible") refreshJobList();
+});
 
 if (CAN_RECORD) {
 attachRecorder(wholeJobMicEl, showWholeJobStatus, function (blob, btn, notify) {
