@@ -467,9 +467,62 @@ if (diff <= 0) return "";
 var h = Math.floor(diff / 60), m = diff % 60;
 return (h ? h + "h" : "") + (h && m ? " " : "") + (m ? m + "m" : "");
 }
+// ---- AM/PM safety net. Work runs roughly 5am–7pm, and the boys often pick
+// "3:00" on the time wheel without flipping it to PM. So:
+//  • anything before 5:00am can't be a real work time — read it as PM
+//    (e.g. 3:00am → 3:00pm);
+//  • if finish is still at or before start, the finish was meant to be PM
+//    (e.g. start 12:30pm, finish 3:00 → 3:00pm) — work goes over lunch.
+//    Only if that lands by 8pm; otherwise it's flagged for the tech to fix.
+// Returns the corrected "HH:MM" pair plus a short note of anything changed.
+var EARLIEST_WORK_MIN = 5 * 60;
+var LATEST_WORK_MIN = 20 * 60; // never auto-push a finish past 8pm — flag it instead
+function hhmmToMin(t) {
+if (!t) return null;
+var b = String(t).split(":").map(Number);
+if (!isFinite(b[0]) || !isFinite(b[1])) return null;
+return b[0] * 60 + b[1];
+}
+function minToHhmm(m) {
+m = ((m % 1440) + 1440) % 1440;
+return pad(Math.floor(m / 60)) + ":" + pad(m % 60);
+}
+function fixShiftTimes(startStr, finishStr) {
+var s = hhmmToMin(startStr), f = hhmmToMin(finishStr), notes = [];
+if (s !== null && s < EARLIEST_WORK_MIN) { s += 720; notes.push("start read as " + formatTimeStr(minToHhmm(s))); }
+if (f !== null && f < EARLIEST_WORK_MIN) { f += 720; notes.push("finish read as " + formatTimeStr(minToHhmm(f))); }
+if (s !== null && f !== null && f <= s && f < 720 && f + 720 > s && f + 720 <= LATEST_WORK_MIN) {
+f += 720; notes.push("finish read as " + formatTimeStr(minToHhmm(f)));
+}
+return {
+start: s === null ? "" : minToHhmm(s),
+finish: f === null ? "" : minToHhmm(f),
+note: notes.length ? "Checked AM/PM: " + notes.join(", ") + "." : "",
+bad: s !== null && f !== null && f <= s
+};
+}
+var timeFixNote = "";
+// Applies the fix to the Start/Finish boxes; returns true if anything changed.
+function applyShiftTimeFix() {
+var r = fixShiftTimes(startTimeEl.value, finishTimeEl.value);
+var changed = r.start !== startTimeEl.value || r.finish !== finishTimeEl.value;
+if (changed) {
+startTimeEl.value = r.start;
+finishTimeEl.value = r.finish;
+timeFixNote = r.note;
+}
+updateDurationHint();
+return changed;
+}
 function updateDurationHint() {
 var dur = durationText(startTimeEl.value, finishTimeEl.value);
-durationHintEl.textContent = dur ? "That's " + dur + " on the job" : "Optional — tap \"Now\" as you start and finish, or leave blank";
+var bad = fixShiftTimes(startTimeEl.value, finishTimeEl.value).bad;
+durationHintEl.textContent = bad
+? "Finish is before start — check the times (AM/PM)."
+: dur
+? (timeFixNote ? timeFixNote + " " : "") + "That's " + dur + " on the job"
+: "Optional — tap \"Now\" as you start and finish, or leave blank";
+durationHintEl.style.color = bad ? "var(--danger)" : "";
 }
 
 // ---- Parts ----
@@ -868,6 +921,12 @@ showStatus(job
 openJobPicker();
 return;
 }
+applyShiftTimeFix();
+if (fixShiftTimes(startTimeEl.value, finishTimeEl.value).bad) {
+showStatus("Finish time is before the start time — check AM/PM and fix it before submitting.", true, true);
+finishTimeEl.focus();
+return;
+}
 var isWorkshop = isWorkshopJob(selectedJob) && jobEl.value === WORKSHOP_DISPLAY;
 if (isWorkshop && (!startTimeEl.value || !finishTimeEl.value)) {
 showStatus("Workshop time needs a start and finish time.", true);
@@ -924,6 +983,7 @@ notesEl.value = "";
 clientNoteEl.value = "";
 startTimeEl.value = "";
 finishTimeEl.value = "";
+timeFixNote = "";
 clearParts();
 addPartRow();
 updateDocketNumber();
@@ -942,10 +1002,13 @@ addPartBtn.addEventListener("click", function () { addPartRow(); updateDocketNum
 
 [techEl, jobEl, notesEl, clientNoteEl].forEach(function (el) { el.addEventListener("input", updateDocketNumber); });
 [startTimeEl, finishTimeEl].forEach(function (el) {
-el.addEventListener("input", function () { updateDurationHint(); updateDocketNumber(); });
+el.addEventListener("input", function () { timeFixNote = ""; updateDurationHint(); updateDocketNumber(); });
+// Once the time wheel is closed, sort out AM/PM.
+el.addEventListener("change", function () { applyShiftTimeFix(); updateDocketNumber(); });
+el.addEventListener("blur", function () { applyShiftTimeFix(); updateDocketNumber(); });
 });
-startNowBtn.addEventListener("click", function () { startTimeEl.value = nowTimeString(); updateDurationHint(); updateDocketNumber(); });
-finishNowBtn.addEventListener("click", function () { finishTimeEl.value = nowTimeString(); updateDurationHint(); updateDocketNumber(); });
+startNowBtn.addEventListener("click", function () { timeFixNote = ""; startTimeEl.value = nowTimeString(); updateDurationHint(); updateDocketNumber(); });
+finishNowBtn.addEventListener("click", function () { timeFixNote = ""; finishTimeEl.value = nowTimeString(); applyShiftTimeFix(); updateDocketNumber(); });
 appPinEl.addEventListener("change", function () { store.pin = appPinEl.value.trim(); safeSave(); });
 
 // ---- Voice dictation: record on the phone, transcribe + tidy on the backend ----
@@ -1068,6 +1131,7 @@ return;
 var data = result.data || {};
 var gotSomething = false;
 if (data.jobRef) { jobEl.value = data.jobRef; afterJobTextSet(); gotSomething = true; }
+timeFixNote = "";
 if (data.startTime) { startTimeEl.value = data.startTime; gotSomething = true; }
 if (data.finishTime) { finishTimeEl.value = data.finishTime; gotSomething = true; }
 if (data.notes) { notesEl.value = data.notes; gotSomething = true; }
@@ -1080,6 +1144,7 @@ if (!partsRowsEl.children.length) addPartRow();
 if (!gotSomething) { notify("Didn't catch anything — try again closer to the mic.", true); return; }
 updateDurationHint();
 updateDocketNumber();
+applyShiftTimeFix();
 var tidied = !!data.tidied;
 notify(tidied ? "Tidied up by Claude — check it over." : "Filled in as spoken — Claude cleanup unavailable, check the wording.", !tidied);
 showStatus(tidied ? "Tidied up by Claude — check it over before saving." : "Filled in from your dictation — Claude cleanup unavailable, check the wording closely.", !tidied);
