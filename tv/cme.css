@@ -1,0 +1,47 @@
+/* CME workshop TV dashboards — shared look (red/black, sized for 1920x1080 TVs) */
+:root {
+  --red: #e21c24; --red-deep: #6e0d10; --ink: #0a0a0b; --card: #141416; --card-2: #1c1c20;
+  --line: #2b2b30; --fg: #f5f5f6; --muted: #9b9ba3; --up: #4ade80; --amber: #f5a524;
+  --sans: "Roboto", "Inter", "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
+  --serif: Georgia, "DejaVu Serif", "Liberation Serif", serif;
+  --gap: 1.2vw; --radius: 10px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--ink); color: var(--fg); overflow: hidden; cursor: none; }
+body { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+.page { height: 100vh; display: flex; flex-direction: column; padding: 2.2vh 2.4vw 1.6vh; border-top: 6px solid var(--red); }
+
+/* Header: left label · centred title · logo right, all on one bottom line */
+.head { --logo-h: 11vh; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: last baseline; gap: var(--gap); }
+.head-left { color: var(--muted); font-size: 1.15vw; }
+.head-left b { display: block; color: var(--fg); font-weight: 600; font-size: 1.6vw; }
+.title { font-family: var(--serif); font-weight: 400; font-size: calc(var(--logo-h) * .83); line-height: 1; margin: 0; white-space: nowrap; }
+.brand { justify-self: end; }
+.logo { display: block; height: var(--logo-h); width: auto; margin-bottom: calc(var(--logo-h) * -0.04); }
+.take { text-align: center; color: var(--muted); font-size: 1.35vw; margin: 1.6vh auto 2vh; max-width: 80ch; min-height: 1.4em; }
+.take b { color: var(--fg); font-weight: 600; }
+
+/* Headline figures */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+.kpi { background: var(--card); border: 1px solid var(--line); border-left: 5px solid var(--red); border-radius: var(--radius); padding: 1.4vh 1.2vw; }
+.kpi .lbl { color: var(--muted); font-size: .85vw; text-transform: uppercase; letter-spacing: .12em; }
+.kpi .val { font-family: var(--serif); font-size: 3.6vw; line-height: 1.05; margin-top: .3vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .sub { color: var(--muted); font-size: 1vw; margin-top: .4vh; }
+.kpi.alert .val { color: #ff5a60; }
+.up { color: var(--up); } .down { color: var(--red); }
+
+/* Panels */
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.8vh 1.4vw; min-height: 0; display: flex; flex-direction: column; }
+.panel h2 { margin: 0; font-weight: 500; font-size: 1.55vw; }
+.panel .note { color: var(--muted); font-size: .95vw; margin: .3vh 0 1.6vh; }
+.note i.dash { display: inline-block; width: 1.5em; border-top: 2px dashed var(--fg); vertical-align: middle; margin: 0 .35em; opacity: .7; }
+.note i.lg-ghost { display: inline-block; width: 4px; height: 1em; background: rgba(255,255,255,.85); vertical-align: middle; margin: 0 .35em; border-radius: 2px; }
+
+/* Footer + status */
+.foot { display: flex; justify-content: space-between; color: var(--muted); font-size: .85vw; margin-top: 1.2vh; }
+.banner { display: none; background: var(--red); color: #fff; font-weight: 600; font-size: 1.3vw; text-align: center; padding: .9vh 1vw; border-radius: var(--radius); margin-bottom: 1.4vh; }
+.banner.show { display: block; }
+.empty { color: var(--muted); font-size: 1.3vw; display: flex; align-items: center; justify-content: center; flex: 1; }
+
+@keyframes growX { from { transform: scaleX(0); } }
+@keyframes growY { from { transform: scaleY(0); } }

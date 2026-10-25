@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>CME Billable Hours</title>
+<link rel="stylesheet" href="cme.css">
+<style>
+.grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: var(--gap); margin-top: var(--gap); flex: 1; min-height: 0; }
+
+/* Leaderboard */
+.board { flex: 1; display: flex; flex-direction: column; justify-content: space-around; min-height: 0; }
+.brow { display: grid; grid-template-columns: 13vw 1fr 5vw 7.5vw; align-items: center; gap: .9vw; font-size: 1.45vw; }
+.brow .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brow .rank { color: var(--red); font-weight: 700; margin-right: .5em; }
+.track { position: relative; height: 3.4vh; background: #1f1f23; border-radius: 6px; }
+.bar { position: absolute; inset: 0 auto 0 0; border-radius: 6px; transform-origin: left center; background: linear-gradient(90deg, var(--red-deep), var(--red)); animation: growX 1.4s cubic-bezier(.2,.8,.2,1) both; }
+.bar.lead { box-shadow: 0 0 18px rgba(226, 28, 36, .55); }
+.tgt { position: absolute; top: -5px; bottom: -5px; border-left: 2px dashed rgba(255,255,255,.65); }
+.ghost { position: absolute; top: 2px; bottom: 2px; width: 4px; margin-left: -2px; background: rgba(255,255,255,.85); border-radius: 2px; }
+.brow .hrs { text-align: right; font-weight: 600; }
+.brow .last { text-align: right; font-size: .72em; color: var(--muted); }
+
+/* Eight-week progress, one small chart per person */
+.trend { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: var(--gap); min-height: 0; }
+.tcell { border: 1px solid var(--line); border-radius: var(--radius); padding: 1vh .8vw; display: flex; flex-direction: column; min-height: 0; }
+.tn { display: flex; justify-content: space-between; font-size: 1.1vw; margin-bottom: .8vh; }
+.tn b { font-weight: 600; }
+.cols { position: relative; flex: 1; display: flex; align-items: flex-end; gap: 4px; min-height: 0; }
+.col { flex: 1; background: #3a2224; border-radius: 3px 3px 0 0; transform-origin: bottom; animation: growY 1s cubic-bezier(.2,.8,.2,1) both; }
+.col.now { background: var(--red); }
+.cols .tgt { left: 0; right: 0; top: auto; bottom: auto; border-left: 0; border-top: 2px dashed rgba(255,255,255,.45); }
+.tx { display: flex; justify-content: space-between; color: var(--muted); font-size: .8vw; margin-top: .5vh; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="banner" id="banner"></div>
+  <header class="head">
+    <div class="head-left">This week <b id="weeklbl">—</b></div>
+    <h1 class="title">Billable hours</h1>
+    <div class="brand"><img class="logo" src="logo.png" alt="Clough Marine Electronics"></div>
+  </header>
+  <p class="take" id="take"></p>
+
+  <section class="kpis">
+    <div class="kpi"><div class="lbl">Team billable this week</div><div class="val" id="k-total">—</div><div class="sub" id="k-total-sub">&nbsp;</div></div>
+    <div class="kpi"><div class="lbl">Team billable last week</div><div class="val" id="k-last">—</div><div class="sub" id="k-last-sub">&nbsp;</div></div>
+    <div class="kpi"><div class="lbl">Top biller this week</div><div class="val" id="k-top">—</div><div class="sub" id="k-top-sub">&nbsp;</div></div>
+    <div class="kpi"><div class="lbl">Hit target last week</div><div class="val" id="k-target">—</div><div class="sub" id="k-target-sub">&nbsp;</div></div>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <h2>This week's leaderboard</h2>
+      <p class="note">Billable hours so far this week <i class="dash"></i><span class="tgtlbl">target</span> <i class="lg-ghost"></i>last week's total</p>
+      <div class="board" id="board"></div>
+    </div>
+    <div class="panel">
+      <h2>Eight-week progress</h2>
+      <p class="note">Billable hours per week, this week in red <i class="dash"></i><span class="tgtlbl">target</span></p>
+      <div class="trend" id="trend"></div>
+    </div>
+  </section>
+
+  <div class="foot"><span id="updated"></span><span>Billable = time on a job, not on the "None billable" rate · from Tradify timesheets via the office PC</span></div>
+</div>
+
+<script src="cme.js"></script>
+<script>
+(function () {
+  const { el, hrs, shortName, parseYmd, dayMonth } = CME;
+  let lastStamp = null;
+
+  async function draw() {
+    const res = await CME.load("hours");
+    const d = res.data;
+    CME.showStatus(document.getElementById("banner"), document.getElementById("updated"), res);
+    if (!d || !d.staff || !d.staff.length) {
+      document.getElementById("board").replaceChildren(el("div", "empty", "Waiting for the first update from Tradify…"));
+      return;
+    }
+    if (d.updatedAt === lastStamp) return;   // nothing new: keep the screen still
+    lastStamp = d.updatedAt;
+
+    const TARGET = d.targetHours || 32, n = d.weekStarts.length, cur = n - 1, prev = n - 2;
+    const scaleMax = Math.max(40, TARGET * 1.25, ...d.staff.map((s) => Math.max(...s.billable)));
+    document.querySelectorAll(".tgtlbl").forEach((e) => (e.textContent = TARGET + " h target"));
+
+    const ws = parseYmd(d.weekStarts[cur]), we = new Date(ws); we.setDate(we.getDate() + 6);
+    document.getElementById("weeklbl").textContent = dayMonth(ws) + " – " + dayMonth(we);
+
+    const people = d.staff.map((s) => ({ name: s.name, now: s.billable[cur] || 0, last: s.billable[prev] || 0, weeks: s.billable }))
+      .sort((a, b) => b.now - a.now || b.last - a.last);
+    const teamNow = people.reduce((a, p) => a + p.now, 0);
+    const teamLast = people.reduce((a, p) => a + p.last, 0);
+    const teamPrev2 = d.staff.reduce((a, s) => a + (s.billable[n - 3] || 0), 0);
+    const hit = people.filter((p) => p.last >= TARGET).length;
+    const top = people[0];
+
+    document.getElementById("k-total").textContent = hrs(teamNow) + " h";
+    document.getElementById("k-total-sub").textContent = "so far · " + people.length + " staff";
+    document.getElementById("k-last").textContent = hrs(teamLast) + " h";
+    const diff = teamLast - teamPrev2, sub = document.getElementById("k-last-sub");
+    sub.textContent = (diff >= 0 ? "▲ +" : "▼ −") + hrs(Math.abs(diff)) + " h on the week before";
+    sub.className = "sub " + (diff >= 0 ? "up" : "down");
+    document.getElementById("k-top").textContent = top.now > 0 ? shortName(top.name) : "—";
+    document.getElementById("k-top-sub").textContent = top.now > 0 ? hrs(top.now) + " h billable" : "no billable time yet";
+    document.getElementById("k-target").textContent = hit + " of " + people.length;
+    document.getElementById("k-target-sub").textContent = "reached " + TARGET + " h";
+
+    const take = document.getElementById("take"); take.replaceChildren();
+    const add = (t, b) => take.appendChild(el(b ? "b" : "span", null, t));
+    if (teamNow > 0) {
+      add("The team has billed "); add(hrs(teamNow) + " hours", true); add(" so far this week. ");
+      add(shortName(top.name), true); add(" leads with " + hrs(top.now) + " h.");
+    } else {
+      add("New week — last week the team billed "); add(hrs(teamLast) + " hours", true); add(".");
+    }
+
+    // Leaderboard
+    const board = document.getElementById("board"); board.replaceChildren();
+    people.forEach((p, i) => {
+      const row = el("div", "brow");
+      const who = el("div", "who"); who.append(el("span", "rank", i + 1), document.createTextNode(shortName(p.name)));
+      const tr = el("div", "track");
+      const bar = el("div", "bar" + (i === 0 && p.now > 0 ? " lead" : ""));
+      bar.style.width = Math.min(100, (p.now / scaleMax) * 100) + "%"; bar.style.animationDelay = i * 110 + "ms";
+      const tg = el("div", "tgt"); tg.style.left = (TARGET / scaleMax) * 100 + "%";
+      const gh = el("div", "ghost"); gh.style.left = Math.min(100, (p.last / scaleMax) * 100) + "%";
+      tr.append(bar, tg, gh);
+      row.append(who, tr, el("div", "hrs", hrs(p.now)), el("div", "last", "last wk " + hrs(p.last)));
+      board.appendChild(row);
+    });
+
+    // Eight-week small multiples
+    const trend = document.getElementById("trend"); trend.replaceChildren();
+    trend.style.gridTemplateColumns = "repeat(" + (people.length > 6 ? 4 : 3) + ", 1fr)";
+    people.forEach((p, pi) => {
+      const cell = el("div", "tcell");
+      const tn = el("div", "tn"); tn.append(el("span", null, shortName(p.name)), el("b", null, hrs(p.now) + " h"));
+      const cols = el("div", "cols");
+      p.weeks.forEach((h, i) => {
+        const c = el("div", "col" + (i === cur ? " now" : ""));
+        c.style.height = Math.min(100, (h / scaleMax) * 100) + "%"; c.style.animationDelay = pi * 70 + i * 50 + "ms";
+        cols.appendChild(c);
+      });
+      const tg = el("div", "tgt"); tg.style.bottom = (TARGET / scaleMax) * 100 + "%"; cols.appendChild(tg);
+      const tx = el("div", "tx"); tx.append(el("span", null, dayMonth(parseYmd(d.weekStarts[0]))), el("span", null, "this wk"));
+      cell.append(tn, cols, tx); trend.appendChild(cell);
+    });
+  }
+  CME.loop(draw);
+})();
+</script>
+</body>
+</html>

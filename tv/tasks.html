@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>CME Job Tasks</title>
+<link rel="stylesheet" href="cme.css">
+<style>
+.compact .kpi .val { font-size: 2.9vw; } .compact .kpi { padding: 1vh 1.2vw; }
+.people { display: flex; flex-wrap: wrap; gap: .6vw; justify-content: center; margin: 0 0 1.6vh; }
+.chip { background: var(--card-2); border: 1px solid var(--line); border-radius: 999px; padding: .5vh 1vw; font-size: 1.1vw; }
+.chip b { color: var(--red); margin-left: .45em; }
+
+.panel.list { flex: 1; margin-top: var(--gap); }
+.list-head { display: flex; justify-content: space-between; align-items: baseline; }
+.pager { color: var(--muted); font-size: 1vw; }
+.tablewrap { flex: 1; min-height: 0; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: .85vw; text-transform: uppercase; letter-spacing: .1em; padding: 0 .8vw .8vh; border-bottom: 1px solid var(--line); }
+td { padding: .85vh .8vw; border-bottom: 1px solid #202024; font-size: 1.2vw; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+col.c-due { width: 12%; } col.c-task { width: 30%; } col.c-job { width: 27%; } col.c-who { width: 15%; } col.c-book { width: 16%; }
+td.task { font-weight: 600; }
+.jobno { color: var(--red); font-weight: 600; margin-right: .5em; }
+.sub { color: var(--muted); font-size: .8em; }
+.due { display: inline-block; padding: .25vh .6vw; border-radius: 6px; font-weight: 600; font-size: .95em; }
+.due.overdue { background: var(--red); color: #fff; }
+.due.today { background: var(--amber); color: #111; }
+.due.soon { border: 1.5px solid var(--fg); }
+.due.later { color: var(--fg); }
+.due.none { color: var(--muted); font-weight: 400; }
+tr.overdue td.task { color: #ff8a8f; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
+tbody tr { animation: fadeIn .5s ease-out both; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="banner" id="banner"></div>
+  <header class="head">
+    <div class="head-left">Today <b id="todaylbl">—</b></div>
+    <h1 class="title">Job tasks</h1>
+    <div class="brand"><img class="logo" src="logo.png" alt="Clough Marine Electronics"></div>
+  </header>
+  <p class="take" id="take"></p>
+  <div class="people" id="people"></div>
+
+  <section class="kpis compact">
+    <div class="kpi"><div class="lbl">Open assigned tasks</div><div class="val" id="k-open">—</div><div class="sub" id="k-open-sub">&nbsp;</div></div>
+    <div class="kpi" id="kpi-over"><div class="lbl">Overdue</div><div class="val" id="k-over">—</div><div class="sub">past their due date</div></div>
+    <div class="kpi"><div class="lbl">Due in the next 7 days</div><div class="val" id="k-soon">—</div><div class="sub" id="k-soon-sub">&nbsp;</div></div>
+    <div class="kpi"><div class="lbl">No due date</div><div class="val" id="k-none">—</div><div class="sub">set one in Tradify</div></div>
+  </section>
+
+  <section class="panel list">
+    <div class="list-head"><h2>Assigned tasks on active jobs</h2><span class="pager" id="pager"></span></div>
+    <p class="note">Overdue first, then by due date · open (not ticked off) tasks with someone assigned</p>
+    <div class="tablewrap" id="wrap">
+      <table>
+        <colgroup><col class="c-due"><col class="c-task"><col class="c-job"><col class="c-who"><col class="c-book"></colgroup>
+        <thead><tr><th>Due</th><th>Task</th><th>Job</th><th>Assigned to</th><th>Next booking</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="foot"><span id="updated"></span><span>From Tradify job tasks · pages change every 20 seconds</span></div>
+</div>
+
+<script src="cme.js"></script>
+<script>
+(function () {
+  const { el, shortName, parseYmd, parseYmdhm, dayMonth, weekday, time12, today } = CME;
+  const PAGE_SECONDS = 20;
+  let lastStamp = null, pages = [], pageIdx = 0, items = [];
+
+  function classify(t, t0) {
+    if (!t.due) return { cls: "none", rank: 4, text: "No date" };
+    const d = parseYmd(t.due), days = Math.round((d - t0) / 86400000);
+    if (days < 0) return { cls: "overdue", rank: 0, days, text: (days === -1 ? "1 day" : -days + " days") + " late" };
+    if (days === 0) return { cls: "today", rank: 1, days, text: "Today" };
+    if (days === 1) return { cls: "soon", rank: 2, days, text: "Tomorrow" };
+    if (days <= 7) return { cls: "soon", rank: 2, days, text: weekday(d) + " " + dayMonth(d) };
+    return { cls: "later", rank: 3, days, text: weekday(d) + " " + dayMonth(d) };
+  }
+
+  function nextBooking(t, t0) {
+    const a = (t.appointments || []).find((x) => parseYmdhm(x.start) >= t0);
+    if (!a) return "";
+    const s = parseYmdhm(a.start), sameDay = s - t0 < 86400000;
+    let txt = (sameDay ? "Today" : weekday(s) + " " + dayMonth(s)) + " " + time12(s);
+    if (a.end) txt += "–" + time12(parseYmdhm(a.end));
+    return txt;
+  }
+
+  function showPage() {
+    const tb = document.getElementById("rows");
+    tb.replaceChildren(...(pages[pageIdx] || []));
+    document.getElementById("pager").textContent = pages.length > 1 ? "Page " + (pageIdx + 1) + " of " + pages.length : "";
+  }
+
+  // Split rows into pages that fit the screen.
+  function paginate() {
+    const wrap = document.getElementById("wrap"), tb = document.getElementById("rows");
+    tb.replaceChildren(...items);
+    const avail = wrap.clientHeight - wrap.querySelector("thead").offsetHeight;
+    pages = []; let cur = [], used = 0;
+    items.forEach((tr) => {
+      const h = tr.offsetHeight;
+      if (cur.length && used + h > avail) { pages.push(cur); cur = []; used = 0; }
+      cur.push(tr); used += h;
+    });
+    if (cur.length) pages.push(cur);
+    if (pageIdx >= pages.length) pageIdx = 0;
+    showPage();
+  }
+
+  async function draw() {
+    const res = await CME.load("tasks");
+    const d = res.data;
+    const t0 = today();
+    document.getElementById("todaylbl").textContent = weekday(t0) + " " + dayMonth(t0);
+    CME.showStatus(document.getElementById("banner"), document.getElementById("updated"), res);
+    if (!d) { document.getElementById("rows").replaceChildren(); return; }
+    const key = d.updatedAt + "|" + t0.toDateString();
+    if (key === lastStamp) return;
+    lastStamp = key;
+
+    const tasks = (d.tasks || []).map((t) => ({ ...t, c: classify(t, t0), book: nextBooking(t, t0) }))
+      .sort((a, b) => a.c.rank - b.c.rank || (a.c.days ?? 0) - (b.c.days ?? 0) || b.jobNumber.localeCompare(a.jobNumber));
+
+    const over = tasks.filter((t) => t.c.cls === "overdue").length;
+    const soon = tasks.filter((t) => t.c.rank === 1 || t.c.rank === 2).length;
+    const none = tasks.filter((t) => t.c.cls === "none").length;
+    const jobs = new Set(tasks.map((t) => t.jobNumber)).size;
+    document.getElementById("k-open").textContent = tasks.length;
+    document.getElementById("k-open-sub").textContent = "across " + jobs + " job" + (jobs === 1 ? "" : "s");
+    document.getElementById("k-over").textContent = over;
+    document.getElementById("kpi-over").classList.toggle("alert", over > 0);
+    document.getElementById("k-soon").textContent = soon;
+    const dueToday = tasks.filter((t) => t.c.cls === "today").length;
+    document.getElementById("k-soon-sub").textContent = dueToday ? dueToday + " due today" : "none due today";
+    document.getElementById("k-none").textContent = none;
+
+    // Who has what
+    const count = {};
+    tasks.forEach((t) => t.staff.forEach((s) => (count[s] = (count[s] || 0) + 1)));
+    const ppl = Object.entries(count).sort((a, b) => b[1] - a[1]);
+    const pe = document.getElementById("people"); pe.replaceChildren();
+    ppl.forEach(([name, n]) => { const c = el("span", "chip", shortName(name)); c.appendChild(el("b", null, n)); pe.appendChild(c); });
+
+    const take = document.getElementById("take"); take.replaceChildren();
+    const add = (t, b) => take.appendChild(el(b ? "b" : "span", null, t));
+    if (!tasks.length) add("No open tasks are assigned on active jobs right now.");
+    else {
+      add(tasks.length + " open tasks", true); add(" assigned across " + jobs + " jobs");
+      if (over) { add(" — "); add(over + " overdue", true); add("."); } else add(", none overdue.");
+    }
+
+    items = tasks.map((t, i) => {
+      const tr = el("tr", t.c.cls === "overdue" ? "overdue" : "");
+      tr.style.animationDelay = (i % 14) * 40 + "ms";
+      const due = el("td"); due.appendChild(el("span", "due " + t.c.cls, t.c.text));
+      const task = el("td", "task", t.task || "(untitled task)");
+      const job = el("td"); job.append(el("span", "jobno", t.jobNumber), document.createTextNode(t.reference || t.customer));
+      if (t.reference && t.customer) job.append(el("span", "sub", " · " + t.customer));
+      const who = el("td", null, t.staff.map(shortName).join(", "));
+      const book = el("td", t.book ? "" : "sub", t.book || "—");
+      tr.append(due, task, job, who, book);
+      return tr;
+    });
+    if (!items.length) { document.getElementById("rows").replaceChildren(); document.getElementById("pager").textContent = ""; return; }
+    paginate();
+  }
+
+  CME.loop(draw);
+  setInterval(() => { if (pages.length > 1) { pageIdx = (pageIdx + 1) % pages.length; showPage(); } }, PAGE_SECONDS * 1000);
+  window.addEventListener("resize", () => items.length && paginate());
+})();
+</script>
+</body>
+</html>
