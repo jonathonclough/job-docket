@@ -17,7 +17,7 @@
 .track { position: relative; height: 3.4vh; background: var(--track); border-radius: 6px; }
 .bar { position: absolute; inset: 0 auto 0 0; border-radius: 6px; transform-origin: left center; background: linear-gradient(90deg, var(--bar-a), var(--bar-b)); animation: growX 1.4s cubic-bezier(.2,.8,.2,1) both; }
 .bar.lead { box-shadow: 0 0 14px rgba(76, 200, 121, .55); }
-.tgt { position: absolute; top: -5px; bottom: -5px; border-left: 2px dashed var(--target); }
+.tgt { position: absolute; top: -5px; bottom: -5px; border-left: 2px dashed rgba(27,42,56,.45); }
 .ghost { position: absolute; top: 2px; bottom: 2px; width: 4px; margin-left: -2px; background: var(--fg); border-radius: 2px; }
 .brow .hrs { text-align: right; font-weight: 600; }
 .brow .last { text-align: right; font-size: .72em; color: var(--muted); }
@@ -30,7 +30,7 @@
 .cols { position: relative; flex: 1; display: flex; align-items: flex-end; gap: 4px; min-height: 0; }
 .col { flex: 1; background: var(--bar-past); border-radius: 3px 3px 0 0; transform-origin: bottom; animation: growY 1s cubic-bezier(.2,.8,.2,1) both; }
 .col.now { background: linear-gradient(180deg, var(--bar-b), var(--bar-a)); }
-.cols .tgt { left: 0; right: 0; top: auto; bottom: auto; border-left: 0; border-top: 2px dashed var(--target); }
+.cols .tgt { left: 0; right: 0; top: auto; bottom: auto; border-left: 0; border-top: 2px dashed rgba(27,42,56,.35); }
 .tx { display: flex; justify-content: space-between; color: var(--muted); font-size: .8vw; margin-top: .5vh; }
 </style>
 </head>

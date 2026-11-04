@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>CME Calendar</title>
+<link rel="stylesheet" href="cme.css">
+<style>
+/* This week as day columns (Mon–Sun), multi-day items (away, leave) as a strip on top, next week underneath. */
+.away { display: flex; flex-wrap: wrap; justify-content: center; gap: .8vw; margin: 0 0 1.6vh; min-height: 3.6vh; }
+.away-chip { background: var(--card); box-shadow: var(--shadow); border: 1px solid var(--line); border-left: 5px solid var(--blue);
+  border-radius: 999px; padding: .6vh 1.2vw; font-size: 1.15vw; }
+.away-chip b { font-weight: 600; margin-right: .5em; }
+.away-chip span { color: var(--muted); }
+
+.week { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .8vw; }
+.day { background: var(--card); box-shadow: var(--shadow); border: 1px solid var(--line); border-top: 5px solid var(--line);
+  border-radius: var(--radius); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.day.today { border-top-color: var(--teal); outline: 2px solid var(--teal); outline-offset: -1px; }
+.day.past { opacity: .62; }
+.day.weekend { background: var(--card-2); }
+.day-head { padding: 1.1vh .8vw .9vh; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; }
+.day-name { font-size: 1.45vw; font-weight: 600; }
+.day-date { color: var(--muted); font-size: 1vw; }
+.today-tag { background: var(--teal); color: #fff; font-size: .8vw; font-weight: 600; border-radius: 999px; padding: .2vh .6vw; margin-left: .4vw; vertical-align: middle; }
+.events { flex: 1; min-height: 0; overflow: hidden; padding: .9vh .6vw; display: flex; flex-direction: column; gap: .9vh; }
+.nothing { color: var(--muted); font-size: 1vw; text-align: center; margin-top: 2.5vh; }
+.ev { background: var(--card-2); border: 1px solid var(--line); border-left: 4px solid var(--teal); border-radius: 8px; padding: .9vh .6vw; flex: none; }
+.day.weekend .ev { background: var(--card); }
+.ev.now { border-left-color: var(--green); background: #eefaf3; }
+.ev .time { font-size: .95vw; font-weight: 600; color: var(--teal); }
+.ev.now .time { color: var(--green); }
+.ev .ev-title { font-size: 1.15vw; font-weight: 600; line-height: 1.25; margin-top: .3vh; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ev .where { font-size: .9vw; color: var(--muted); margin-top: .4vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev .where::before { content: "\25CF  "; color: var(--blue); font-size: .7em; vertical-align: middle; }
+.pager { color: var(--muted); font-size: .8vw; }
+
+.next { margin-top: var(--gap); background: var(--card); box-shadow: var(--shadow); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.3vh 1.4vw; display: flex; gap: 1.4vw; align-items: center; min-height: 9vh; }
+.next h2 { margin: 0; font-weight: 500; font-size: 1.35vw; white-space: nowrap; }
+.next-list { display: flex; gap: .8vw; flex: 1; min-width: 0; overflow: hidden; }
+.next-item { background: var(--card-2); border: 1px solid var(--line); border-radius: 8px; padding: .7vh .8vw; min-width: 0; flex: 0 1 auto; max-width: 22vw; }
+.next-item .d { font-size: .85vw; color: var(--teal); font-weight: 600; }
+.next-item .t { font-size: 1.05vw; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next-none { color: var(--muted); font-size: 1.05vw; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
+.ev, .next-item { animation: fadeIn .5s ease-out both; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="banner" id="banner"></div>
+  <header class="head">
+    <div class="head-left">This week <b id="weeklbl">—</b></div>
+    <h1 class="title">Calendar</h1>
+    <div class="brand"><img class="logo" src="logo.png" alt="Clough Marine Electronics"></div>
+  </header>
+  <p class="take" id="take"></p>
+  <div class="away" id="away"></div>
+  <section class="week" id="week"></section>
+  <section class="next"><h2>Next week</h2><div class="next-list" id="next"></div></section>
+  <div class="foot"><span id="updated"></span><span>From the CME Google Calendar</span></div>
+</div>
+
+<script src="cme.js"></script>
+<script>
+(function () {
+  const { el, parseYmd, parseYmdhm, dayMonth, weekday, time12, today } = CME;
+  const DAY_MS = 86400000, PAGE_SECONDS = 15;
+  let lastKey = null, cols = [];
+
+  // Events come as Perth local "YYYY-MM-DDTHH:MM"; all-day ones as "YYYY-MM-DD" with an exclusive end date.
+  function norm(e) {
+    const s = e.allDay ? parseYmd(e.start) : parseYmdhm(e.start);
+    let en = e.end ? (e.allDay ? parseYmd(e.end) : parseYmdhm(e.end)) : new Date(s.getTime() + (e.allDay ? DAY_MS : 3600000));
+    return { ...e, s, e: en };
+  }
+  const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  // Longer than a day, or all-day across several days → shown in the strip on top (away, leave, haul-outs).
+  const isLong = (ev) => (ev.e - ev.s) > DAY_MS || (ev.allDay && (ev.e - ev.s) > DAY_MS);
+  const range = (ev) => {
+    const last = ev.allDay ? addDays(ev.e, -1) : ev.e;
+    return weekday(ev.s) + " " + dayMonth(ev.s) + " – " + weekday(last) + " " + dayMonth(last);
+  };
+  const timeText = (ev) => ev.allDay ? "All day" : time12(ev.s) + " – " + time12(ev.e);
+
+  function paginate() {
+    cols.forEach((c) => {
+      const box = c.box; box.replaceChildren(...c.items);
+      const cs = getComputedStyle(box), avail = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom), gap = parseFloat(cs.rowGap) || 0;
+      c.pages = []; let cur = [], used = 0;
+      c.items.forEach((it) => {
+        const h = it.offsetHeight, need = used + (cur.length ? gap : 0) + h;
+        if (cur.length && need > avail) { c.pages.push(cur); cur = [it]; used = h; } else { cur.push(it); used = need; }
+      });
+      if (cur.length) c.pages.push(cur);
+      if (c.idx >= c.pages.length) c.idx = 0;
+      show(c);
+    });
+  }
+  function show(c) {
+    if (!c.items.length) { c.box.replaceChildren(el("div", "nothing", c.past ? "—" : "Nothing booked")); c.pager.textContent = ""; return; }
+    c.box.replaceChildren(...(c.pages[c.idx] || []));
+    c.pager.textContent = c.pages.length > 1 ? (c.idx + 1) + "/" + c.pages.length : "";
+  }
+
+  async function draw() {
+    const res = await CME.load("calendar");
+    const d = res.data, now = new Date(), t0 = today();
+    const mon = addDays(t0, -((t0.getDay() + 6) % 7)), sun = addDays(mon, 6);
+    document.getElementById("weeklbl").textContent = dayMonth(mon) + " – " + dayMonth(sun);
+    CME.showStatus(document.getElementById("banner"), document.getElementById("updated"), res);
+    if (!d) return;
+    const key = d.updatedAt + "|" + t0.toDateString() + "|" + now.getHours();
+    if (key === lastKey) return;
+    lastKey = key;
+
+    const evs = (d.events || []).map(norm).sort((a, b) => a.s - b.s);
+    const weekEnd = addDays(mon, 7), nextEnd = addDays(mon, 14);
+    const overlaps = (ev, a, b) => ev.s < b && ev.e > a;
+    const longOnes = evs.filter((ev) => isLong(ev) && overlaps(ev, mon, weekEnd));
+    const short = evs.filter((ev) => !isLong(ev));
+
+    // Multi-day strip
+    const away = document.getElementById("away"); away.replaceChildren();
+    longOnes.forEach((ev) => { const c = el("span", "away-chip"); c.append(el("b", null, ev.title), el("span", null, range(ev))); away.appendChild(c); });
+
+    // Week columns
+    const week = document.getElementById("week"); week.replaceChildren(); cols = [];
+    let weekCount = 0, todayCount = 0;
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(mon, i), next = addDays(day, 1);
+      const isToday = day.getTime() === t0.getTime(), past = day < t0;
+      const mine = short.filter((ev) => overlaps(ev, day, next));
+      weekCount += mine.length; if (isToday) todayCount = mine.length;
+      const col = el("div", "day" + (isToday ? " today" : "") + (past ? " past" : "") + (i >= 5 ? " weekend" : ""));
+      const head = el("div", "day-head");
+      const name = el("div", "day-name", weekday(day));
+      if (isToday) name.appendChild(el("span", "today-tag", "Today"));
+      const right = el("div"); right.append(el("span", "day-date", dayMonth(day)));
+      const pager = el("span", "pager"); right.append(document.createTextNode(" "), pager);
+      head.append(name, right);
+      const box = el("div", "events");
+      col.append(head, box); week.appendChild(col);
+      const items = mine.map((ev, k) => {
+        const c = el("div", "ev" + (!ev.allDay && ev.s <= now && ev.e > now ? " now" : ""));
+        c.style.animationDelay = (i * 60 + k * 50) + "ms";
+        c.append(el("div", "time", (!ev.allDay && ev.s <= now && ev.e > now ? "Now · " : "") + timeText(ev)), el("div", "ev-title", ev.title || "(no title)"));
+        if (ev.location) c.appendChild(el("div", "where", ev.location));
+        return c;
+      });
+      cols.push({ box, pager, items, pages: [], idx: 0, past });
+    }
+    paginate();
+
+    // Summary line
+    const take = document.getElementById("take"); take.replaceChildren();
+    take.append(el("b", null, weekCount + " booking" + (weekCount === 1 ? "" : "s")), document.createTextNode(" this week"));
+    take.append(document.createTextNode(todayCount ? " · " : " · nothing booked today"));
+    if (todayCount) take.append(el("b", null, todayCount + " today"));
+    take.append(document.createTextNode("."));
+
+    // Next week
+    const nx = document.getElementById("next"); nx.replaceChildren();
+    const upcoming = short.filter((ev) => overlaps(ev, weekEnd, nextEnd));
+    const nextLong = evs.filter((ev) => isLong(ev) && overlaps(ev, weekEnd, nextEnd));
+    if (!upcoming.length && !nextLong.length) nx.appendChild(el("span", "next-none", "Nothing booked yet"));
+    nextLong.concat(upcoming).slice(0, 8).forEach((ev, k) => {
+      const it = el("div", "next-item"); it.style.animationDelay = k * 50 + "ms";
+      it.append(el("div", "d", isLong(ev) ? range(ev) : weekday(ev.s) + " " + dayMonth(ev.s) + (ev.allDay ? "" : " · " + time12(ev.s))), el("div", "t", ev.title || "(no title)"));
+      nx.appendChild(it);
+    });
+  }
+
+  CME.loop(draw);
+  setInterval(() => cols.forEach((c) => { if (c.pages.length > 1) { c.idx = (c.idx + 1) % c.pages.length; show(c); } }), PAGE_SECONDS * 1000);
+  window.addEventListener("resize", () => cols.length && paginate());
+})();
+</script>
+</body>
+</html>

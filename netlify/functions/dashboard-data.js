@@ -4,9 +4,9 @@
 // every 15 minutes. The TV pages in /tv/ GET them. The Raspberry Pi driving the
 // TVs never touches Tradify — it only opens /tv/hours.html and /tv/tasks.html.
 //
-// GET  /api/dashboard-data?key=<read key>         -> { receivedAt, status, hours, tasks }
+// GET  /api/dashboard-data?key=<read key>         -> { receivedAt, status, hours, tasks, calendar }
 // POST /api/dashboard-data   header x-dashboard-key: <write key>
-//      body { hours?, tasks?, status? }   (hours/tasks replace what's stored;
+//      body { hours?, tasks?, calendar?, status? }   (each part replaces what's stored;
 //      status alone is how the PC reports "Tradify logged out" etc.)
 //
 // The keys themselves aren't in this file (the repo is public) — only their
@@ -75,6 +75,19 @@ function cleanTasks(t) {
   };
 }
 
+// Calendar events, times as Perth local "YYYY-MM-DDTHH:MM" (allDay events as "YYYY-MM-DD").
+function cleanCalendar(c) {
+  if (!c || !Array.isArray(c.events)) return null;
+  const str = (v, n) => String(v || "").slice(0, n);
+  return {
+    name: str(c.name, 80),
+    events: c.events.slice(0, 400).map((e) => ({
+      title: str(e.title, 200), start: str(e.start, 16), end: str(e.end, 16),
+      allDay: !!e.allDay, location: str(e.location, 160), description: str(e.description, 300)
+    }))
+  };
+}
+
 exports.handler = async (event) => {
   const store = openStore();
 
@@ -85,7 +98,7 @@ exports.handler = async (event) => {
     }
     try {
       const d = await store.get("current", { type: "json" });
-      return reply(200, d || { receivedAt: null, status: null, hours: null, tasks: null });
+      return reply(200, d || { receivedAt: null, status: null, hours: null, tasks: null, calendar: null });
     } catch (e) {
       return reply(500, { error: "Couldn't read the dashboard data." });
     }
@@ -107,11 +120,13 @@ exports.handler = async (event) => {
 
   const hours = body.hours !== undefined ? cleanHours(body.hours) : undefined;
   const tasks = body.tasks !== undefined ? cleanTasks(body.tasks) : undefined;
-  if (hours === null || tasks === null) return reply(400, { error: "hours/tasks came in an unexpected shape — nothing stored." });
+  const calendar = body.calendar !== undefined ? cleanCalendar(body.calendar) : undefined;
+  if (hours === null || tasks === null || calendar === null) return reply(400, { error: "hours/tasks/calendar came in an unexpected shape — nothing stored." });
 
   if (hours) { cur.hours = hours; cur.hoursAt = now; }
   if (tasks) { cur.tasks = tasks; cur.tasksAt = now; }
-  if (hours || tasks) cur.receivedAt = now;
+  if (calendar) { cur.calendar = calendar; cur.calendarAt = now; }
+  if (hours || tasks || calendar) cur.receivedAt = now;
   const st = body.status && typeof body.status === "object" ? body.status : { ok: true };
   cur.status = { ok: st.ok !== false, loginNeeded: !!st.loginNeeded, message: String(st.message || "").slice(0, 300), at: now };
 
@@ -121,6 +136,7 @@ exports.handler = async (event) => {
   return reply(200, {
     ok: true, receivedAt: cur.receivedAt,
     staff: cur.hours ? cur.hours.staff.length : 0,
-    tasks: cur.tasks ? cur.tasks.tasks.length : 0
+    tasks: cur.tasks ? cur.tasks.tasks.length : 0,
+    events: cur.calendar ? cur.calendar.events.length : 0
   });
 };

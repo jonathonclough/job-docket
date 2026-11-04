@@ -1,14 +1,13 @@
-/* CME workshop TV dashboards — shared look (black, teal/green, sized for 1920x1080 TVs) */
+/* CME workshop TV dashboards — shared look (light, teal/green, sized for 1920x1080 TVs) */
 :root {
-  /* Black background with positive accents: ocean teal, fresh green, sky blue. */
-  --ink: #000000; --card: #121418; --card-2: #1a1d22; --line: #2a2f37;
-  --fg: #f3f6f9; --muted: #9aa6b2;
-  --teal: #2ec4b0; --blue: #5aa9ff; --green: #4cd68a;
-  --bar-a: #1fb3a1; --bar-b: #4cd68a; --bar-past: #1f4a45; --track: #1d2228;
-  --up: #4cd68a; --down: #f0a07a;
-  --late: #ff9b85; --late-bg: #3a1f1a; --today: #ffd27a; --today-bg: #3a2e12; --today-line: #f2b33d;
-  --edge: #3a4450; --late-card: #1d1515; --target: rgba(243,246,249,.55); --banner-line: #6b3328;
-  --shadow: none;
+  /* Light, positive scheme: soft sky background, white cards, ocean teal + fresh green accents. */
+  --ink: #f3f6f9; --card: #ffffff; --card-2: #f7fafc; --line: #dce4ec;
+  --fg: #1b2a38; --muted: #627385;
+  --teal: #0f9d8a; --blue: #2f80ed; --green: #22a06b;
+  --bar-a: #26b5a3; --bar-b: #4cc879; --bar-past: #c4e8e1; --track: #e8eef3;
+  --up: #1f9d5c; --down: #c2603f;
+  --late: #c2412d; --late-bg: #fde8e3; --today: #8a5a00; --today-bg: #fff1cf; --today-line: #f2b33d;
+  --shadow: 0 1px 2px rgba(27,42,56,.06), 0 4px 14px rgba(27,42,56,.06);
   --sans: "Roboto", "Inter", "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
   --serif: Georgia, "DejaVu Serif", "Liberation Serif", serif;
   --gap: 1.2vw; --radius: 10px;
@@ -46,7 +45,7 @@ body { font-family: var(--sans); font-variant-numeric: tabular-nums; }
 
 /* Footer + status */
 .foot { display: flex; justify-content: space-between; color: var(--muted); font-size: .85vw; margin-top: 1.2vh; }
-.banner { display: none; background: var(--late-bg); color: var(--late); border: 1px solid var(--banner-line); font-weight: 600; font-size: 1.3vw; text-align: center; padding: .9vh 1vw; border-radius: var(--radius); margin-bottom: 1.4vh; }
+.banner { display: none; background: var(--late-bg); color: var(--late); border: 1px solid #f3c2b6; font-weight: 600; font-size: 1.3vw; text-align: center; padding: .9vh 1vw; border-radius: var(--radius); margin-bottom: 1.4vh; }
 .banner.show { display: block; }
 .empty { color: var(--muted); font-size: 1.3vw; display: flex; align-items: center; justify-content: center; flex: 1; }
 
