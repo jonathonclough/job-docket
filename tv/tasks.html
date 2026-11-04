@@ -7,31 +7,44 @@
 <title>CME Job Tasks</title>
 <link rel="stylesheet" href="cme.css">
 <style>
-.compact .kpi .val { font-size: 2.9vw; } .compact .kpi { padding: 1vh 1.2vw; }
-.people { display: flex; flex-wrap: wrap; gap: .6vw; justify-content: center; margin: 0 0 1.6vh; }
-.chip { background: var(--card-2); border: 1px solid var(--line); border-radius: 999px; padding: .5vh 1vw; font-size: 1.1vw; }
-.chip b { color: var(--red); margin-left: .45em; }
+/* One column per staff member, their open tasks stacked underneath. */
+.stats { display: flex; justify-content: center; gap: 1.2vw; margin: 0 0 1.8vh; }
+.stat { background: var(--card); box-shadow: var(--shadow); border: 1px solid var(--line); border-radius: 999px; padding: .6vh 1.3vw; font-size: 1.15vw; color: var(--muted); }
+.stat b { color: var(--fg); font-weight: 600; margin-right: .35em; }
+.stat.alert b { color: var(--late); }
 
-.panel.list { flex: 1; margin-top: var(--gap); }
-.list-head { display: flex; justify-content: space-between; align-items: baseline; }
-.pager { color: var(--muted); font-size: 1vw; }
-.tablewrap { flex: 1; min-height: 0; overflow: hidden; }
-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-th { text-align: left; color: var(--muted); font-weight: 500; font-size: .85vw; text-transform: uppercase; letter-spacing: .1em; padding: 0 .8vw .8vh; border-bottom: 1px solid var(--line); }
-td { padding: .85vh .8vw; border-bottom: 1px solid #202024; font-size: 1.2vw; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-col.c-due { width: 12%; } col.c-task { width: 30%; } col.c-job { width: 27%; } col.c-who { width: 15%; } col.c-book { width: 16%; }
-td.task { font-weight: 600; }
-.jobno { color: var(--red); font-weight: 600; margin-right: .5em; }
-.sub { color: var(--muted); font-size: .8em; }
-.due { display: inline-block; padding: .25vh .6vw; border-radius: 6px; font-weight: 600; font-size: .95em; }
-.due.overdue { background: var(--red); color: #fff; }
-.due.today { background: var(--amber); color: #111; }
-.due.soon { border: 1.5px solid var(--fg); }
-.due.later { color: var(--fg); }
-.due.none { color: var(--muted); font-weight: 400; }
-tr.overdue td.task { color: #ff8a8f; }
+.board { flex: 1; min-height: 0; display: grid; gap: var(--gap); }
+.col { background: var(--card); border: 1px solid var(--line); border-top: 5px solid var(--teal); box-shadow: var(--shadow); border-radius: var(--radius);
+  display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.col-head { padding: 1.3vh 1vw 1.1vh; border-bottom: 1px solid var(--line); }
+.col-name { font-size: 1.6vw; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.col-meta { display: flex; justify-content: space-between; color: var(--muted); font-size: .95vw; margin-top: .3vh; }
+.col-meta .late { color: var(--late); font-weight: 600; }
+.cards { flex: 1; min-height: 0; overflow: hidden; padding: 1vh .7vw; display: flex; flex-direction: column; gap: 1vh; }
+.empty-col { color: var(--muted); font-size: 1.1vw; text-align: center; margin-top: 3vh; }
+
+.card { background: var(--card-2); border: 1px solid var(--line); border-left: 4px solid var(--edge); border-radius: 8px; padding: 1vh .8vw; flex: none; }
+.card.overdue { border-left-color: var(--late); background: var(--late-card); }
+.card.today { border-left-color: var(--today-line); }
+.card.soon { border-left-color: var(--blue); }
+.card .task { font-size: 1.22vw; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card.overdue .task { color: var(--fg); }
+.card .job { font-size: .98vw; color: var(--muted); margin-top: .5vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .job b { color: var(--blue); font-weight: 600; margin-right: .4em; }
+.card .when { display: flex; flex-wrap: wrap; gap: .4vw; margin-top: .7vh; font-size: .9vw; }
+.due { display: inline-block; padding: .2vh .5vw; border-radius: 5px; font-weight: 600; }
+.due.overdue { background: var(--late-bg); color: var(--late); }
+.due.today { background: var(--today-bg); color: var(--today); }
+.due.soon { border: 1.5px solid var(--blue); color: var(--blue); }
+.due.later { color: var(--fg); border: 1px solid var(--line); }
+.due.none { color: var(--muted); font-weight: 400; padding-left: 0; }
+.book { color: var(--muted); padding: .2vh 0; }
+.book::before { content: "Booked "; }
+.with { color: var(--muted); font-size: .85vw; margin-top: .5vh; }
+.pager { color: var(--muted); font-size: .85vw; }
+
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
-tbody tr { animation: fadeIn .5s ease-out both; }
+.card { animation: fadeIn .5s ease-out both; }
 </style>
 </head>
 <body>
@@ -43,139 +56,129 @@ tbody tr { animation: fadeIn .5s ease-out both; }
     <div class="brand"><img class="logo" src="logo.png" alt="Clough Marine Electronics"></div>
   </header>
   <p class="take" id="take"></p>
-  <div class="people" id="people"></div>
-
-  <section class="kpis compact">
-    <div class="kpi"><div class="lbl">Open assigned tasks</div><div class="val" id="k-open">—</div><div class="sub" id="k-open-sub">&nbsp;</div></div>
-    <div class="kpi" id="kpi-over"><div class="lbl">Overdue</div><div class="val" id="k-over">—</div><div class="sub">past their due date</div></div>
-    <div class="kpi"><div class="lbl">Due in the next 7 days</div><div class="val" id="k-soon">—</div><div class="sub" id="k-soon-sub">&nbsp;</div></div>
-    <div class="kpi"><div class="lbl">No due date</div><div class="val" id="k-none">—</div><div class="sub">set one in Tradify</div></div>
-  </section>
-
-  <section class="panel list">
-    <div class="list-head"><h2>Assigned tasks on active jobs</h2><span class="pager" id="pager"></span></div>
-    <p class="note">Overdue first, then by due date · open (not ticked off) tasks with someone assigned</p>
-    <div class="tablewrap" id="wrap">
-      <table>
-        <colgroup><col class="c-due"><col class="c-task"><col class="c-job"><col class="c-who"><col class="c-book"></colgroup>
-        <thead><tr><th>Due</th><th>Task</th><th>Job</th><th>Assigned to</th><th>Next booking</th></tr></thead>
-        <tbody id="rows"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <div class="foot"><span id="updated"></span><span>From Tradify job tasks · pages change every 20 seconds</span></div>
+  <div class="stats" id="stats"></div>
+  <section class="board" id="board"></section>
+  <div class="foot"><span id="updated"></span><span>Open job tasks from Tradify · overdue first, then by due date · a full column turns its page every 15 seconds</span></div>
 </div>
 
 <script src="cme.js"></script>
 <script>
 (function () {
   const { el, shortName, parseYmd, parseYmdhm, dayMonth, weekday, time12, today } = CME;
-  const PAGE_SECONDS = 20;
-  let lastStamp = null, pages = [], pageIdx = 0, items = [];
+  const PAGE_SECONDS = 15;
+  let lastStamp = null, columns = [];   // columns: [{ el, cards: [nodes], pages: [[nodes]], idx, pagerEl }]
 
   function classify(t, t0) {
-    if (!t.due) return { cls: "none", rank: 4, text: "No date" };
+    if (!t.due) return { cls: "none", rank: 4, text: "No due date" };
     const d = parseYmd(t.due), days = Math.round((d - t0) / 86400000);
     if (days < 0) return { cls: "overdue", rank: 0, days, text: (days === -1 ? "1 day" : -days + " days") + " late" };
-    if (days === 0) return { cls: "today", rank: 1, days, text: "Today" };
-    if (days === 1) return { cls: "soon", rank: 2, days, text: "Tomorrow" };
-    if (days <= 7) return { cls: "soon", rank: 2, days, text: weekday(d) + " " + dayMonth(d) };
-    return { cls: "later", rank: 3, days, text: weekday(d) + " " + dayMonth(d) };
+    if (days === 0) return { cls: "today", rank: 1, days, text: "Due today" };
+    if (days === 1) return { cls: "soon", rank: 2, days, text: "Due tomorrow" };
+    if (days <= 7) return { cls: "soon", rank: 2, days, text: "Due " + weekday(d) + " " + dayMonth(d) };
+    return { cls: "later", rank: 3, days, text: "Due " + dayMonth(d) };
   }
-
   function nextBooking(t, t0) {
     const a = (t.appointments || []).find((x) => parseYmdhm(x.start) >= t0);
     if (!a) return "";
-    const s = parseYmdhm(a.start), sameDay = s - t0 < 86400000;
-    let txt = (sameDay ? "Today" : weekday(s) + " " + dayMonth(s)) + " " + time12(s);
-    if (a.end) txt += "–" + time12(parseYmdhm(a.end));
-    return txt;
+    const s = parseYmdhm(a.start);
+    return (s - t0 < 86400000 ? "today" : weekday(s) + " " + dayMonth(s)) + " " + time12(s);
   }
 
-  function showPage() {
-    const tb = document.getElementById("rows");
-    tb.replaceChildren(...(pages[pageIdx] || []));
-    document.getElementById("pager").textContent = pages.length > 1 ? "Page " + (pageIdx + 1) + " of " + pages.length : "";
+  function makeCard(t, person, i) {
+    const c = el("div", "card " + t.c.cls);
+    c.style.animationDelay = (i % 10) * 50 + "ms";
+    c.appendChild(el("div", "task", t.task || "(untitled task)"));
+    const job = el("div", "job"); job.append(el("b", null, t.jobNumber), document.createTextNode(t.reference || t.customer || ""));
+    c.appendChild(job);
+    const when = el("div", "when");
+    when.appendChild(el("span", "due " + t.c.cls, t.c.text));
+    if (t.book) when.appendChild(el("span", "book", t.book));
+    c.appendChild(when);
+    const others = t.staff.filter((s) => s !== person).map(shortName);
+    if (others.length) c.appendChild(el("div", "with", "With " + others.join(", ")));
+    return c;
   }
 
-  // Split rows into pages that fit the screen.
+  // Split each column's cards into pages that fit its height.
   function paginate() {
-    const wrap = document.getElementById("wrap"), tb = document.getElementById("rows");
-    tb.replaceChildren(...items);
-    const avail = wrap.clientHeight - wrap.querySelector("thead").offsetHeight;
-    pages = []; let cur = [], used = 0;
-    items.forEach((tr) => {
-      const h = tr.offsetHeight;
-      if (cur.length && used + h > avail) { pages.push(cur); cur = []; used = 0; }
-      cur.push(tr); used += h;
+    columns.forEach((col) => {
+      const box = col.cardsEl;
+      box.replaceChildren(...col.cards);
+      const avail = box.clientHeight - parseFloat(getComputedStyle(box).paddingTop) - parseFloat(getComputedStyle(box).paddingBottom);
+      const gap = parseFloat(getComputedStyle(box).rowGap) || 0;
+      col.pages = []; let cur = [], used = 0;
+      col.cards.forEach((c) => {
+        const h = c.offsetHeight, need = used + (cur.length ? gap : 0) + h;
+        if (cur.length && need > avail) { col.pages.push(cur); cur = [c]; used = h; }
+        else { cur.push(c); used = need; }
+      });
+      if (cur.length) col.pages.push(cur);
+      if (col.idx >= col.pages.length) col.idx = 0;
+      show(col);
     });
-    if (cur.length) pages.push(cur);
-    if (pageIdx >= pages.length) pageIdx = 0;
-    showPage();
+  }
+  function show(col) {
+    col.cardsEl.replaceChildren(...(col.pages[col.idx] || []));
+    col.pagerEl.textContent = col.pages.length > 1 ? "page " + (col.idx + 1) + " of " + col.pages.length : "";
+    if (!col.cards.length) col.cardsEl.replaceChildren(el("div", "empty-col", "No open tasks"));
   }
 
   async function draw() {
     const res = await CME.load("tasks");
-    const d = res.data;
-    const t0 = today();
+    const d = res.data, t0 = today();
     document.getElementById("todaylbl").textContent = weekday(t0) + " " + dayMonth(t0);
     CME.showStatus(document.getElementById("banner"), document.getElementById("updated"), res);
-    if (!d) { document.getElementById("rows").replaceChildren(); return; }
+    if (!d) return;
     const key = d.updatedAt + "|" + t0.toDateString();
     if (key === lastStamp) return;
     lastStamp = key;
 
-    const tasks = (d.tasks || []).map((t) => ({ ...t, c: classify(t, t0), book: nextBooking(t, t0) }))
-      .sort((a, b) => a.c.rank - b.c.rank || (a.c.days ?? 0) - (b.c.days ?? 0) || b.jobNumber.localeCompare(a.jobNumber));
+    const tasks = (d.tasks || []).map((t) => ({ ...t, c: classify(t, t0), book: nextBooking(t, t0) }));
+    const order = (a, b) => a.c.rank - b.c.rank || (a.c.days ?? 0) - (b.c.days ?? 0) || b.jobNumber.localeCompare(a.jobNumber);
+
+    // Columns: everyone on the hours board plus anyone with a task, alphabetical by first name.
+    const names = new Set();
+    ((res.all && res.all.hours && res.all.hours.staff) || []).forEach((s) => names.add(s.name));
+    tasks.forEach((t) => t.staff.forEach((s) => names.add(s)));
+    const people = [...names].sort((a, b) => a.localeCompare(b));
 
     const over = tasks.filter((t) => t.c.cls === "overdue").length;
     const soon = tasks.filter((t) => t.c.rank === 1 || t.c.rank === 2).length;
-    const none = tasks.filter((t) => t.c.cls === "none").length;
     const jobs = new Set(tasks.map((t) => t.jobNumber)).size;
-    document.getElementById("k-open").textContent = tasks.length;
-    document.getElementById("k-open-sub").textContent = "across " + jobs + " job" + (jobs === 1 ? "" : "s");
-    document.getElementById("k-over").textContent = over;
-    document.getElementById("kpi-over").classList.toggle("alert", over > 0);
-    document.getElementById("k-soon").textContent = soon;
-    const dueToday = tasks.filter((t) => t.c.cls === "today").length;
-    document.getElementById("k-soon-sub").textContent = dueToday ? dueToday + " due today" : "none due today";
-    document.getElementById("k-none").textContent = none;
-
-    // Who has what
-    const count = {};
-    tasks.forEach((t) => t.staff.forEach((s) => (count[s] = (count[s] || 0) + 1)));
-    const ppl = Object.entries(count).sort((a, b) => b[1] - a[1]);
-    const pe = document.getElementById("people"); pe.replaceChildren();
-    ppl.forEach(([name, n]) => { const c = el("span", "chip", shortName(name)); c.appendChild(el("b", null, n)); pe.appendChild(c); });
 
     const take = document.getElementById("take"); take.replaceChildren();
-    const add = (t, b) => take.appendChild(el(b ? "b" : "span", null, t));
-    if (!tasks.length) add("No open tasks are assigned on active jobs right now.");
-    else {
-      add(tasks.length + " open tasks", true); add(" assigned across " + jobs + " jobs");
-      if (over) { add(" — "); add(over + " overdue", true); add("."); } else add(", none overdue.");
-    }
+    take.append(el("b", null, tasks.length + " open task" + (tasks.length === 1 ? "" : "s")),
+      document.createTextNode(" assigned across " + jobs + " active job" + (jobs === 1 ? "" : "s") + "."));
+    const stats = document.getElementById("stats"); stats.replaceChildren();
+    const stat = (n, label, alert) => { const s = el("span", "stat" + (alert && n ? " alert" : "")); s.append(el("b", null, n), document.createTextNode(label)); stats.appendChild(s); };
+    stat(over, "overdue", true);
+    stat(soon, "due in the next 7 days");
+    stat(tasks.filter((t) => t.c.cls === "none").length, "with no due date");
 
-    items = tasks.map((t, i) => {
-      const tr = el("tr", t.c.cls === "overdue" ? "overdue" : "");
-      tr.style.animationDelay = (i % 14) * 40 + "ms";
-      const due = el("td"); due.appendChild(el("span", "due " + t.c.cls, t.c.text));
-      const task = el("td", "task", t.task || "(untitled task)");
-      const job = el("td"); job.append(el("span", "jobno", t.jobNumber), document.createTextNode(t.reference || t.customer));
-      if (t.reference && t.customer) job.append(el("span", "sub", " · " + t.customer));
-      const who = el("td", null, t.staff.map(shortName).join(", "));
-      const book = el("td", t.book ? "" : "sub", t.book || "—");
-      tr.append(due, task, job, who, book);
-      return tr;
+    const board = document.getElementById("board");
+    board.style.gridTemplateColumns = "repeat(" + Math.max(1, people.length) + ", minmax(0, 1fr))";
+    board.replaceChildren();
+    columns = people.map((person) => {
+      const mine = tasks.filter((t) => t.staff.includes(person)).sort(order);
+      const late = mine.filter((t) => t.c.cls === "overdue").length;
+      const colEl = el("div", "col");
+      const head = el("div", "col-head");
+      head.appendChild(el("div", "col-name", shortName(person)));
+      const meta = el("div", "col-meta");
+      const left = el("span", null, mine.length + " task" + (mine.length === 1 ? "" : "s"));
+      if (late) { left.append(document.createTextNode(" · ")); left.appendChild(el("span", "late", late + " late")); }
+      const pagerEl = el("span", "pager");
+      meta.append(left, pagerEl); head.appendChild(meta);
+      const cardsEl = el("div", "cards");
+      colEl.append(head, cardsEl); board.appendChild(colEl);
+      return { cardsEl, pagerEl, cards: mine.map((t, i) => makeCard(t, person, i)), pages: [], idx: 0 };
     });
-    if (!items.length) { document.getElementById("rows").replaceChildren(); document.getElementById("pager").textContent = ""; return; }
     paginate();
   }
 
   CME.loop(draw);
-  setInterval(() => { if (pages.length > 1) { pageIdx = (pageIdx + 1) % pages.length; showPage(); } }, PAGE_SECONDS * 1000);
-  window.addEventListener("resize", () => items.length && paginate());
+  setInterval(() => columns.forEach((col) => { if (col.pages.length > 1) { col.idx = (col.idx + 1) % col.pages.length; show(col); } }), PAGE_SECONDS * 1000);
+  window.addEventListener("resize", () => columns.length && paginate());
 })();
 </script>
 </body>

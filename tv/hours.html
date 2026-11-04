@@ -13,12 +13,12 @@
 .board { flex: 1; display: flex; flex-direction: column; justify-content: space-around; min-height: 0; }
 .brow { display: grid; grid-template-columns: 13vw 1fr 5vw 7.5vw; align-items: center; gap: .9vw; font-size: 1.45vw; }
 .brow .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.brow .rank { color: var(--red); font-weight: 700; margin-right: .5em; }
-.track { position: relative; height: 3.4vh; background: #1f1f23; border-radius: 6px; }
-.bar { position: absolute; inset: 0 auto 0 0; border-radius: 6px; transform-origin: left center; background: linear-gradient(90deg, var(--red-deep), var(--red)); animation: growX 1.4s cubic-bezier(.2,.8,.2,1) both; }
-.bar.lead { box-shadow: 0 0 18px rgba(226, 28, 36, .55); }
-.tgt { position: absolute; top: -5px; bottom: -5px; border-left: 2px dashed rgba(255,255,255,.65); }
-.ghost { position: absolute; top: 2px; bottom: 2px; width: 4px; margin-left: -2px; background: rgba(255,255,255,.85); border-radius: 2px; }
+.brow .rank { color: var(--teal); font-weight: 700; margin-right: .5em; }
+.track { position: relative; height: 3.4vh; background: var(--track); border-radius: 6px; }
+.bar { position: absolute; inset: 0 auto 0 0; border-radius: 6px; transform-origin: left center; background: linear-gradient(90deg, var(--bar-a), var(--bar-b)); animation: growX 1.4s cubic-bezier(.2,.8,.2,1) both; }
+.bar.lead { box-shadow: 0 0 14px rgba(76, 200, 121, .55); }
+.tgt { position: absolute; top: -5px; bottom: -5px; border-left: 2px dashed var(--target); }
+.ghost { position: absolute; top: 2px; bottom: 2px; width: 4px; margin-left: -2px; background: var(--fg); border-radius: 2px; }
 .brow .hrs { text-align: right; font-weight: 600; }
 .brow .last { text-align: right; font-size: .72em; color: var(--muted); }
 
@@ -28,9 +28,9 @@
 .tn { display: flex; justify-content: space-between; font-size: 1.1vw; margin-bottom: .8vh; }
 .tn b { font-weight: 600; }
 .cols { position: relative; flex: 1; display: flex; align-items: flex-end; gap: 4px; min-height: 0; }
-.col { flex: 1; background: #3a2224; border-radius: 3px 3px 0 0; transform-origin: bottom; animation: growY 1s cubic-bezier(.2,.8,.2,1) both; }
-.col.now { background: var(--red); }
-.cols .tgt { left: 0; right: 0; top: auto; bottom: auto; border-left: 0; border-top: 2px dashed rgba(255,255,255,.45); }
+.col { flex: 1; background: var(--bar-past); border-radius: 3px 3px 0 0; transform-origin: bottom; animation: growY 1s cubic-bezier(.2,.8,.2,1) both; }
+.col.now { background: linear-gradient(180deg, var(--bar-b), var(--bar-a)); }
+.cols .tgt { left: 0; right: 0; top: auto; bottom: auto; border-left: 0; border-top: 2px dashed var(--target); }
 .tx { display: flex; justify-content: space-between; color: var(--muted); font-size: .8vw; margin-top: .5vh; }
 </style>
 </head>
@@ -59,7 +59,7 @@
     </div>
     <div class="panel">
       <h2>Eight-week progress</h2>
-      <p class="note">Billable hours per week, this week in red <i class="dash"></i><span class="tgtlbl">target</span></p>
+      <p class="note">Billable hours per week, this week in green <i class="dash"></i><span class="tgtlbl">target</span></p>
       <div class="trend" id="trend"></div>
     </div>
   </section>
