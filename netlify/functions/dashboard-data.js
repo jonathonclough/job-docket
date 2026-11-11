@@ -1,4 +1,4 @@
-// Job Docket — data for the workshop TV dashboards (billable hours + job tasks).
+// Job Docket — data for the workshop TV dashboards (billable hours, job tasks, calendar).
 //
 // The office PC (job-docket-sync) reads Tradify and POSTs the figures here
 // every 15 minutes. The TV pages in /tv/ GET them. The Raspberry Pi driving the
@@ -16,6 +16,30 @@
 
 const crypto = require("crypto");
 const { getStore } = require("@netlify/blobs");
+const { parseIcs } = require("../lib/ics.js");
+
+// CME_CALENDAR_ICS (Netlify environment variable): the CME Google Calendar's
+// "Secret address in iCal format". When set, this function reads the calendar
+// itself (at most every 10 minutes) for the TV calendar page — no PC needed.
+const CALENDAR_REFRESH_MS = 10 * 60 * 1000;
+async function refreshCalendar(store, cur) {
+  const url = process.env.CME_CALENDAR_ICS;
+  if (!url) return cur;
+  if (cur.calendarAt && Date.now() - Date.parse(cur.calendarAt) < CALENDAR_REFRESH_MS) return cur;
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error("calendar address answered HTTP " + r.status);
+    const now = Date.now();
+    const cal = parseIcs(await r.text(), new Date(now - 8 * 86400000), new Date(now + 22 * 86400000));
+    cur.calendar = cleanCalendar({ name: cal.name || "CME", events: cal.events });
+    cur.calendarAt = new Date().toISOString();
+    delete cur.calendarError;
+    await store.setJSON("current", cur);
+  } catch (e) {
+    cur.calendarError = String(e.message || e).slice(0, 200);   // keep showing the last good calendar
+  }
+  return cur;
+}
 
 const READ_KEY_SHA256 = "e13c8235e17f626fcd4137bf4c6a6e07d89c2184f059f973b797c49de5e71c9f";
 const WRITE_KEY_SHA256 = "101263a37cacb9b20f952ba642951abb1491221541bbade4810c8c90218005e1";
@@ -97,8 +121,9 @@ exports.handler = async (event) => {
       return reply(401, { error: "Missing or wrong dashboard key." });
     }
     try {
-      const d = await store.get("current", { type: "json" });
-      return reply(200, d || { receivedAt: null, status: null, hours: null, tasks: null, calendar: null });
+      let d = await store.get("current", { type: "json" });
+      d = await refreshCalendar(store, d || { receivedAt: null, status: null, hours: null, tasks: null, calendar: null });
+      return reply(200, d);
     } catch (e) {
       return reply(500, { error: "Couldn't read the dashboard data." });
     }
